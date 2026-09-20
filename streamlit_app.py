@@ -1,40 +1,314 @@
-import streamlit as st
-import streamlit.components.v1 as components
-import os
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NETRA AI — Explainable DR Screening</title>
+<style>
+:root{--teal:#146c6e;--dark:#173a3a;--bg:#f7faf9;--line:#dce7e5;--muted:#657575;--card:#fff}
+*{box-sizing:border-box}body{margin:0;font-family:Inter,Segoe UI,Arial,sans-serif;background:var(--bg);color:#172b2b}button,input{font:inherit}button{cursor:pointer}
+.app{display:flex;min-height:100vh}
+.side{width:255px;background:#fff;border-right:1px solid var(--line);padding:22px 14px;display:flex;flex-direction:column;position:fixed;inset:0 auto 0 0;z-index:20;transition:transform 0.25s ease-in-out}
+.close-btn{display:none;position:absolute;top:15px;right:15px;background:none;border:none;font-size:22px;color:var(--muted);padding:5px;cursor:pointer;z-index:21}
+.sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:19;backdrop-filter:blur(2px)}
+.sidebar-overlay.active{display:block}
 
-# Set page layout to wide and remove padding
-st.set_page_config(
-    page_title="NETRA AI — Explainable DR Screening",
-    layout="wide",
-    initial_sidebar_state="collapsed"
-)
+.logo{display:flex;gap:11px;align-items:center;padding:3px 10px 25px}.logo-icon{width:40px;height:40px;border-radius:12px;background:var(--teal);color:white;display:grid;place-items:center;font-size:20px;font-weight:800}.logo b{font-size:18px}.logo small{display:block;color:#6b7c7c;font-size:9px;letter-spacing:1.7px;margin-top:2px}
+.nav button{width:100%;border:0;background:transparent;padding:12px 13px;text-align:left;border-radius:11px;color:#526565;margin:2px 0}.nav button.active,.nav button:hover{background:#e8f3f2;color:var(--teal);font-weight:700}
+.bottom{margin-top:auto}.status,.lang{border:1px solid var(--line);border-radius:11px;padding:10px 12px;margin-top:9px;font-size:12px}.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#22a06b;margin-right:7px}
+.main{margin-left:255px;flex:1}.top{height:64px;background:white;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 30px;position:sticky;top:0;z-index:10}.badge{background:#eef6f5;color:var(--teal);padding:7px 12px;border-radius:20px;font-size:11px}
+.content{max-width:1240px;margin:auto;padding:34px}.view{display:none}.view.active{display:block}
+.grid{display:grid;gap:20px}.hero{grid-template-columns:1.35fr .85fr}.card{background:white;border:1px solid var(--line);border-radius:25px;padding:30px;box-shadow:0 12px 35px #172b2b0b}
+h1{font-size:43px;line-height:1.06;margin:12px 0}.hero p{color:var(--muted);font-size:17px;line-height:1.7;max-width:680px}.pill{display:inline-flex;background:#eaf4f3;color:var(--teal);padding:8px 12px;border-radius:20px;font-size:12px;font-weight:700}
+.btn{border:0;border-radius:11px;padding:12px 17px;font-weight:700}.primary{background:var(--teal);color:white}.secondary{background:white;border:1px solid #c9d9d7}.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:23px}
+.visual{background:var(--dark);color:white;min-height:330px;border-radius:25px;padding:28px;display:flex;align-items:flex-end;position:relative;overflow:hidden}.retina{position:absolute;width:230px;height:230px;border-radius:50%;left:50%;top:45%;transform:translate(-50%,-50%);background:radial-gradient(circle,#c88b62 0 10%,#7b3f3f 11% 22%,#b86f58 23% 34%,#512e2e 35% 65%,#1a2929 66%);box-shadow:0 0 70px #73a6a850}.video{margin-top:30px}.video-box{height:300px;border-radius:18px;background:#122e2e;position:relative;display:grid;place-items:center;overflow:hidden}.video-box video{width:100%;height:100%;object-fit:cover;display:block;background:#122e2e}.video-box.playing .play{display:none}.play{width:70px;height:70px;border:0;border-radius:50%;background:white;color:var(--teal);font-size:27px;z-index:2}.video-caption{position:absolute;bottom:15px;left:17px;color:white;font-size:12px}.steps{display:grid;gap:9px}.step{padding:15px;background:#f5f9f8;border:1px solid #e1ebe9;border-radius:14px}.step strong{display:block}.step span{color:var(--muted);font-size:13px}
+.stats{grid-template-columns:repeat(4,1fr);margin-top:20px}.stat small{color:#718181}.stat b{font-size:28px;display:block;margin-top:7px}
+.upload{max-width:900px;margin:auto}.drop{border:2px dashed #c9d9d7;border-radius:24px;padding:45px;text-align:center;background:white}.drop.drag{border-color:var(--teal);background:#eff8f7}.preview{display:grid;grid-template-columns:1fr .8fr;gap:22px;text-align:left}.preview img{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:16px;background:#172b2b}
+.processing{max-width:900px;margin:auto}.loader{width:45px;height:45px;border:5px solid #dceae8;border-top-color:var(--teal);border-radius:50%;animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}.proc-step{padding:12px 0;border-bottom:1px solid #edf2f1}.done{color:var(--teal);font-weight:700}
+.resultgrid{grid-template-columns:1.1fr .9fr}.imagepanel{position:relative;aspect-ratio:4/3;background:#172b2b;border-radius:18px;overflow:hidden}.imagepanel img{width:100%;height:100%;object-fit:cover}.heat{position:absolute;inset:0;background:radial-gradient(circle at 38% 45%,#d04f4f 0 9%,transparent 20%),radial-gradient(circle at 66% 56%,#df9b35 0 8%,transparent 18%);mix-blend-mode:screen;opacity:.65}.tabs{display:flex;background:#f1f6f5;padding:4px;border-radius:9px;margin-bottom:12px}.tabs button{border:0;background:transparent;padding:7px 10px;border-radius:6px;font-size:11px}.tabs .sel{background:white;font-weight:700}
+.kpis{display:grid;grid-template-columns:1fr 1fr;gap:9px}.kpi{background:#f6f9f8;padding:12px;border-radius:12px}.kpi small{color:#748484}.kpi b{display:block;margin-top:4px}.explain-stage{position:relative;aspect-ratio:16/8;border-radius:18px;overflow:hidden;background:#172b2b}.explain-stage img{width:100%;height:100%;object-fit:cover}.explain-overlay{position:absolute;inset:0;pointer-events:none}.explain-overlay.heatmap{background:radial-gradient(circle at 38% 45%,rgba(215,55,55,.8) 0 8%,transparent 23%),radial-gradient(circle at 68% 55%,rgba(240,165,40,.72) 0 9%,transparent 25%);mix-blend-mode:screen}.explain-overlay.shap{background:radial-gradient(circle at 42% 48%,rgba(70,210,190,.78) 0 7%,transparent 18%),radial-gradient(circle at 61% 57%,rgba(235,90,150,.72) 0 6%,transparent 16%);mix-blend-mode:screen}.explain-overlay.gradcam{background:radial-gradient(circle at 64% 53%,rgba(255,70,35,.86) 0 8%,transparent 20%),radial-gradient(circle at 43% 46%,rgba(255,205,45,.65) 0 9%,transparent 24%);mix-blend-mode:screen}.stepper{display:flex;gap:8px;flex-wrap:wrap;margin:15px 0}.step-chip{padding:8px 12px;border-radius:20px;background:#edf4f3;color:#607272;font-size:12px}.step-chip.active{background:var(--teal);color:white;font-weight:700}.next-arrow{position:absolute;right:22px;top:50%;transform:translateY(-50%);width:58px;height:58px;border:0;border-radius:50%;background:var(--teal);color:#fff;font-size:28px;display:grid;place-items:center;box-shadow:0 8px 20px #146c6e33;z-index:3}.next-arrow:hover{transform:translateY(-50%) translateX(2px)}.next-arrow:disabled{opacity:.55;cursor:default}.explain-copy{font-size:14px;line-height:1.8;color:#506565}.notice{background:#fff8ec;border:1px solid #f1d8a7;color:#725528;padding:13px;border-radius:13px;font-size:13px;margin-top:18px}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:15px;border-bottom:1px solid #edf1f0;font-size:13px}th{color:#657575;background:#f5f8f7}tbody tr:hover{background:#f8fbfa;cursor:pointer}
+.insightgrid{grid-template-columns:repeat(4,1fr)}.bar{height:180px;display:flex;align-items:end;gap:18px;padding:15px;background:#f5f9f8;border-radius:16px}.bar i{flex:1;background:#79a6a4;border-radius:7px 7px 0 0;min-height:20px}.barlabel{display:flex;justify-content:space-around;font-size:11px;color:#667}
+.mobile{display:none}
 
-# Inject CSS to make the HTML iframe fill the entire screen cleanly
-st.markdown("""
-    <style>
-        #MainMenu {visibility: hidden;}
-        header {visibility: hidden;}
-        footer {visibility: hidden;}
-        .block-container {
-            padding-top: 0rem !important;
-            padding-bottom: 0rem !important;
-            padding-left: 0rem !important;
-            padding-right: 0rem !important;
-            max-width: 100% !important;
-        }
-        iframe {
-            display: block;
-            border: none;
-            width: 100vw;
-            height: 100vh;
-        }
-    </style>
-""", unsafe_allow_html=True)
+@media(max-width:900px){
+  .side{display:none;transform:translateX(-100%)}
+  .side.open{display:flex !important;transform:translateX(0)}
+  .close-btn{display:block}
+  .main{margin-left:0}
+  .mobile{display:block}
+  .top{padding:0 16px}
+  .content{padding:20px}
+  .hero,.resultgrid,.preview{grid-template-columns:1fr}
+  .stats,.insightgrid{grid-template-columns:1fr 1fr}
+  h1{font-size:35px}
+}
+@media(max-width:520px){.stats,.insightgrid{grid-template-columns:1fr}.drop{padding:28px 15px}}
+</style>
+</head>
+<body>
+<div class="app">
+<div class="sidebar-overlay" id="overlay" onclick="closeMobileSidebar()"></div>
+<aside class="side" id="sidebar">
+<button class="close-btn" id="closeSidebarBtn" onclick="closeMobileSidebar()">✕</button>
+<div class="logo"><div class="logo-icon">◎</div><div><b>NETRA AI</b><small>EXPLAINABLE SCREENING</small></div></div>
+<nav class="nav" id="nav"></nav>
+<div class="bottom"><div class="status"><span class="dot"></span>System Ready</div><button class="lang" id="langBtn">🌐 English / हिंदी</button></div>
+</aside>
+<main class="main">
+<header class="top"><button class="btn secondary mobile" id="menuBtn">☰</button><span id="crumb">Workspace</span><span class="badge">AI-assisted screening</span></header>
+<div class="content">
+<section id="dashboard" class="view active"></section>
+<section id="screening" class="view"></section>
+<section id="processing" class="view"></section>
+<section id="result" class="view"></section>
+<section id="explain" class="view"></section>
+<section id="history" class="view"></section>
+<section id="insights" class="view"></section>
+<section id="about" class="view"></section>
+</div></main></div>
 
-# Read and display index.html
-if os.path.exists("index.html"):
-    with open("index.html", "r", encoding="utf-8") as f:
-        html_code = f.read()
-    components.html(html_code, height=1000, scrolling=True)
-else:
-    st.error("Error: `index.html` file not found in the root directory of your GitHub repository.")
+<script>
+const $=id=>document.getElementById(id);
+const API_BASE="http://localhost:5000";
+const API_URL=API_BASE+"/predict";
+const EDGE_URL=API_BASE+"/edge_predict";
+const BENCHMARK_URL=API_BASE+"/edge_benchmark";
+const views=["dashboard","screening","processing","result","explain","history","insights","about"];
+let state={page:"dashboard",file:null,name:"",result:null,view:"original",explainStep:0,history:[],edge:null,benchmark:null};
+
+function nav(){
+ const labels={dashboard:"⌂  Dashboard",screening:"◉  New Screening",history:"◷  Screening History",insights:"▥  Model Insights",about:"ⓘ  About"};
+ $("nav").innerHTML=Object.entries(labels).map(([k,v])=>`<button class="${state.page==k?"active":""}" data-go="${k}">${v}</button>`).join("");
+ document.querySelectorAll("[data-go]").forEach(b=>b.onclick=()=>{
+   go(b.dataset.go);
+   closeMobileSidebar();
+ });
+}
+
+function openMobileSidebar(){
+ $("sidebar").classList.add("open");
+ $("overlay").classList.add("active");
+}
+
+function closeMobileSidebar(){
+ $("sidebar").classList.remove("open");
+ $("overlay").classList.remove("active");
+}
+
+function go(p){state.page=p;views.forEach(v=>$(v).classList.toggle("active",v==p));$("crumb").textContent=p=="dashboard"?"Workspace":p.replace("-"," ");nav();render();}
+function render(){renderDashboard();renderScreening();renderProcessing();renderResult();renderExplain();renderHistory();renderInsights();renderAbout();}
+function renderDashboard(){
+ $("dashboard").innerHTML=`<div class="grid hero">
+ <div class="card"><span class="pill">✦ Explainable AI</span><h1>AI-powered diabetic retinopathy screening</h1><p>Upload a retinal image and receive an AI-assisted screening result with a visual explanation of the model's decision.</p><div class="actions"><button class="btn primary" onclick="go('screening')">＋ Start New Screening →</button><button class="btn secondary" onclick="document.querySelector('.video').scrollIntoView({behavior:'smooth'})">▶ How it works</button></div></div>
+ <div class="visual"><div class="retina"></div><div style="position:relative"><small style="letter-spacing:2px;color:#b8d5d3">NETRA AI</small><h2>See the disease.<br>Understand the decision.</h2><small>✓ Human review remains essential</small></div></div></div>
+ <div class="grid stats">${[["Screenings Completed",String(state.history.length)],["Images Analysed",String(state.history.length)],["DR Grade","0–4"],["System Status","Ready"]].map(x=>`<div class="card stat"><small>${x[0]}</small><b>${x[1]}</b><small>${x[0]=="System Status"?"System operational":x[0]=="DR Grade"?"Scale used by the model":"Live count this session"}</small></div>`).join("")}</div>
+ <div class="card video"><span class="pill">PRODUCT WALKTHROUGH</span><h2>How NETRA AI works</h2><div class="grid" style="grid-template-columns:1.15fr .85fr;margin-top:18px">
+ <div class="video-box" id="walkthroughBox"><video id="walkthroughVideo" preload="metadata" poster="video_poster.png" playsinline controls aria-label="NETRA AI product walkthrough video"><source src="netra_walkthrough.mp4" type="video/mp4">Your browser does not support HTML5 video.</video><button class="play" id="walkthroughPlay" onclick="playWalkthrough()" aria-label="Play NETRA AI walkthrough">▶</button><div class="video-caption">NETRA AI walkthrough • click play for video + sound</div></div>
+ <div class="steps">${[["01","Upload","Upload a retinal image."],["02","Analyse","AI preprocesses and checks image quality."],["03","Predict","The model generates a screening classification."],["04","Explain","XAI highlights regions influencing the prediction."]].map(x=>`<div class="step"><strong>${x[0]} · ${x[1]}</strong><span>${x[2]}</span></div>`).join("")}</div></div></div>
+ <div class="grid" style="grid-template-columns:1fr 1fr;margin-top:20px"><div class="card" style="background:#eaf4f3"><h2>Designed for accessible screening</h2><p style="color:#587070">Simple workflow, low clutter, clear explanations and English + Hindi UI.</p></div><div class="card"><h2>🛡 AI Safety & Transparency</h2><p style="color:#667777">AI-assisted screening is not a replacement for clinical diagnosis. Human review is recommended.</p></div></div>`;
+}
+ bindWalkthrough();
+function renderScreening(){
+ $("screening").innerHTML=`<div class="upload"><span class="pill">NEW SCREENING</span><h1>Upload Retinal Image</h1><p style="color:var(--muted)">Upload a clear fundus photograph for AI-assisted diabetic retinopathy screening.</p>
+ <div class="drop ${state.file?"has":""}" id="drop">${state.file?`<div class="preview"><img src="${state.file}"><div><small style="color:var(--muted)">Selected image</small><h3>${state.name}</h3><div class="step"><strong style="color:var(--teal)">✓ IMAGE QUALITY · Good</strong><span>Demo quality gate — suitable to proceed.</span></div><div class="actions"><button class="btn primary" onclick="analyze()">Analyse Image</button><button class="btn secondary" onclick="clearFile()">↻</button></div></div></div>`:`<div style="font-size:38px;color:var(--teal)">⇧</div><h2>Drag & drop your retinal image here</h2><p style="color:var(--muted)">or</p><button class="btn primary" onclick="fileInput.click()">Browse Image</button><input id="fileInput" type="file" accept="image/jpeg,image/png" hidden><p style="font-size:12px;color:#7a8a8a">Supported formats: JPG / PNG</p>`}</div>
+ <div class="grid" style="grid-template-columns:repeat(3,1fr);margin-top:12px">${["✓ Clear retinal/fundus image","✓ JPG or PNG","✓ Suitable resolution"].map(x=>`<div class="card" style="padding:14px;font-size:12px">${x}</div>`).join("")}</div></div>`;
+ const d=$("drop");d.ondragover=e=>{e.preventDefault();d.classList.add("drag")};d.ondragleave=()=>d.classList.remove("drag");d.ondrop=e=>{e.preventDefault();d.classList.remove("drag");loadFile(e.dataTransfer.files[0])};
+ const fi=$("fileInput");if(fi)fi.onchange=e=>loadFile(e.target.files[0]);
+}
+function loadFile(f){if(!f)return;if(!["image/jpeg","image/png"].includes(f.type)){alert("Please choose a JPG or PNG image.");return}state.name=f.name;const r=new FileReader();r.onload=()=>{state.file=r.result;renderScreening()};r.readAsDataURL(f)}
+function clearFile(){state.file=null;state.name="";renderScreening()}
+
+function analyze(){
+ if(!state.file)return;
+ go("processing");
+ fetch(API_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({image:state.file})})
+ .then(r=>{if(!r.ok)throw new Error("Backend error "+r.status);return r.json()})
+ .then(data=>{
+   state.result={
+     id:"NETRA-"+Date.now().toString().slice(-6),
+     date:new Date().toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric"}),
+     grade:data.grade,
+     gradeLabel:data.gradeLabel,
+     prediction:data.gradeLabel,
+     confidence:data.confidence,
+     quality:data.quality||"Good",
+     image:state.file,
+     heatmapImg:data.heatmap_image,
+     gradcamImg:data.gradcam_image,
+     shapImg:data.shap_image,
+     explanationText:data.explanation,
+     edge:null,
+     benchmark:null
+   };
+   state.explainStep=0;
+   state.history.unshift(state.result);
+   go("result");
+ })
+ .catch(err=>{
+   console.error("NETRA AI backend error:",err);
+   alert("NETRA AI could not reach the local AI backend. Start app.py and try again.");
+   go("screening");
+ });
+}
+function renderProcessing(){
+ $("processing").innerHTML=`<div class="processing"><span class="pill">AI PIPELINE</span><h1>Analysing retinal image</h1><p style="color:var(--muted)">Running the local NETRA AI model and preparing explainable screening evidence.</p><div class="grid" style="grid-template-columns:.8fr 1fr"><div class="card">${state.file?`<img src="${state.file}" style="width:100%;border-radius:16px">`:""}</div><div class="card"><div style="display:flex;gap:13px;align-items:center"><div class="loader"></div><b>AI processing</b></div><div id="procSteps" style="margin-top:25px"></div></div></div></div>`;
+ const ss=["Image preprocessing","Image quality assessment","Running DR classification","Generating explanation","Preparing screening report"];let i=0;const tick=()=>{if(!$("procSteps"))return;$("procSteps").innerHTML=ss.map((s,n)=>`<div class="proc-step ${n<i?"done":""}">${n<i?"✓":n==i?"●":"○"} &nbsp;${s}</div>`).join("");if(i<ss.length){i++;setTimeout(tick,420)}};tick();
+}
+function heatHTML(){
+ let image=state.result?.image?`<img src="${state.result.image}">`:`<div style="height:100%;display:grid;place-items:center;color:#abc">Demo retinal image</div>`;
+ const modes=["original","heatmap","shap","gradcam"];
+ const r=state.result;
+ let overlayHTML="";
+ if(state.view=="heatmap")overlayHTML=r?.heatmapImg?`<img src="${r.heatmapImg}">`:'<div class="heat"></div>';
+ else if(state.view=="shap")overlayHTML=r?.shapImg?`<img src="${r.shapImg}">`:'<div class="explain-overlay shap"></div>';
+ else if(state.view=="gradcam")overlayHTML=r?.gradcamImg?`<img src="${r.gradcamImg}">`:'<div class="explain-overlay gradcam"></div>';
+ image=(state.view!="original"&&r?.heatmapImg)?"":image;
+ return `<div class="tabs">${modes.map(v=>`<button class="${state.view==v?"sel":""}" onclick="state.view='${v}';renderResult()">${v=="gradcam"?"Grad-CAM":v=="shap"?"SHAP":v.charAt(0).toUpperCase()+v.slice(1)}</button>`).join("")}</div><div class="imagepanel">${image}${overlayHTML}</div>`;
+}
+function renderResult(){
+ if(!state.result){$("result").innerHTML="";return}
+ const r=state.result;
+ $("result").innerHTML=`<div><span class="pill">AI-ASSISTED SCREENING</span><div style="display:flex;justify-content:space-between;gap:12px;align-items:end"><h1>Screening Result</h1></div><div class="grid resultgrid"><div class="card">${heatHTML()}</div><div class="card"><small style="color:#6c7c7c">AI ASSESSMENT</small><h2 style="font-size:30px">${r.gradeLabel}</h2><div class="kpis">${[["DR Grade",`Grade ${r.grade} / 4`],["Image Quality",r.quality],["Screening ID",r.id]].map(x=>`<div class="kpi"><small>${x[0]}</small><b>${x[1]}</b></div>`).join("")}</div><hr style="border:0;border-top:1px solid var(--line);margin:22px 0"><h3>What does this mean?</h3><p style="color:var(--muted);line-height:1.7">The prototype has assigned <b>DR Grade ${r.grade}</b> based on its screening workflow. The grade is an AI-assisted output and should be reviewed by a qualified healthcare professional.</p><button class="btn primary" style="width:100%;margin-top:10px" onclick="go('explain')">View AI Explanation →</button></div></div>
+ <div class="card" style="margin-top:20px;background:#f4f8f8"><span class="pill">EDGE DEPLOYMENT</span><h2>Run the 4.65 MB quantized TFLite model</h2><p style="color:var(--muted);line-height:1.7">Use the same retinal image with the bundled quantized TFLite model. This is the edge-inference path; Grad-CAM and SHAP remain on the Keras explanation path.</p><div class="actions"><button class="btn secondary" onclick="runEdgeInference()">⚡ Run TFLite Edge Inference</button><button class="btn secondary" onclick="runEdgeBenchmark()">⏱ Benchmark 20 Runs</button></div><div id="edgePanel" style="margin-top:15px">${edgePanelHTML()}</div></div>
+ <div class="notice">🛡 AI-assisted screening — clinical evaluation should be performed by a qualified healthcare professional.</div></div>`;
+}
+
+function edgePanelHTML(){
+ const e=state.edge, b=state.benchmark;
+ if(!e && !b) return `<div style="color:var(--muted);font-size:13px">No edge run yet. Use the buttons above to demonstrate local TFLite inference and benchmark the quantized model.</div>`;
+ let html='';
+ if(e) { const consistency = Number(e.grade)===Number(state.result?.grade) ? "MATCH" : "CHECK"; html+=`<div class="grid" style="grid-template-columns:repeat(4,1fr);gap:10px"><div class="kpi"><small>TFLite result</small><b>Grade ${e.grade}</b></div><div class="kpi"><small>Edge latency</small><b>${e.latencyMs} ms</b></div><div class="kpi"><small>Model size</small><b>${e.modelSizeMb} MB</b></div><div class="kpi"><small>Keras vs TFLite</small><b>${consistency}</b></div></div><p style="color:var(--muted);font-size:12px;margin-top:10px">Quantized model: <b>${e.model}</b> · ${e.gradeLabel}</p>`; }
+ if(b) html+=`<div class="grid" style="grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px"><div class="kpi"><small>20-run average</small><b>${b.averageMs} ms</b></div><div class="kpi"><small>Median</small><b>${b.medianMs} ms</b></div><div class="kpi"><small>Range</small><b>${b.minMs}–${b.maxMs} ms</b></div></div><p style="color:var(--muted);font-size:12px;margin-top:10px">Benchmark environment: <b>${b.environment}</b>. This is a local-device measurement, not the earlier Kaggle benchmark.</p>`;
+ return html;
+}
+function runEdgeInference(){
+ if(!state.result?.image)return;
+ fetch(EDGE_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({image:state.result.image})})
+ .then(r=>{if(!r.ok)throw new Error("Edge inference error "+r.status);return r.json()})
+ .then(data=>{state.edge=data;renderResult();})
+ .catch(err=>{console.error(err);alert("TFLite edge inference failed. Make sure the updated app.py is running and both TFLite files are in the same folder.");});
+}
+function runEdgeBenchmark(){
+ if(!state.result?.image)return;
+ fetch(BENCHMARK_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({image:state.result.image,runs:20})})
+ .then(r=>{if(!r.ok)throw new Error("Benchmark error "+r.status);return r.json()})
+ .then(data=>{state.benchmark=data;renderResult();})
+ .catch(err=>{console.error(err);alert("TFLite benchmark failed. Make sure the updated app.py is running and both TFLite files are in the same folder.");});
+}
+
+function explainMode(){return ["Original Image","AI Attention / Heatmap","SHAP","Grad-CAM"][state.explainStep]}
+function explainImg(){
+ const r=state.result;
+ if(state.explainStep==1)return r?.heatmapImg?`<img src="${r.heatmapImg}">`:(r?.image?`<img src="${r.image}">`:"")+"<div class='explain-overlay heatmap'></div>";
+ if(state.explainStep==2)return r?.shapImg?`<img src="${r.shapImg}">`:(r?.image?`<img src="${r.image}">`:"")+"<div class='explain-overlay shap'></div>";
+ if(state.explainStep==3)return r?.gradcamImg?`<img src="${r.gradcamImg}">`:(r?.image?`<img src="${r.image}">`:"")+"<div class='explain-overlay gradcam'></div>";
+ return r?.image?`<img src="${r.image}">`:"";
+}
+function advanceExplain(){if(state.explainStep<3){state.explainStep++;renderExplain()}}
+function renderExplain(){
+ if(!state.result){$("explain").innerHTML="";return}
+ const r=state.result, mode=explainMode();
+ const cardImgs=[
+   r.image?`<img src="${r.image}">`:"",
+   r.heatmapImg?`<img src="${r.heatmapImg}">`:(r.image?`<img src="${r.image}">`:"")+"<div class='explain-overlay heatmap'></div>",
+   r.shapImg?`<img src="${r.shapImg}">`:(r.image?`<img src="${r.image}">`:"")+"<div class='explain-overlay shap'></div>",
+   r.gradcamImg?`<img src="${r.gradcamImg}">`:(r.image?`<img src="${r.image}">`:"")+"<div class='explain-overlay gradcam'></div>"
+ ];
+ const copy=[
+   "Original retinal photograph used for this screening.",
+   "Heatmap showing regions receiving greater model attention.",
+   "SHAP provides a complementary view of image-region contribution.",
+   "Grad-CAM highlights spatial regions associated with the model's final classification."
+ ][state.explainStep];
+
+ const stageGuidance = {
+   0:{cause:"No obvious diabetic-retinopathy signs were identified by the screening model.", prevention:"Continue routine diabetic eye screening and maintain good blood glucose, blood pressure, and cholesterol control.", treatment:"No retinopathy-specific treatment is indicated by this screening result; a clinician should confirm the finding."},
+   1:{cause:"Mild NPDR can be associated with early retinal vascular changes such as microaneurysms.", prevention:"Focus on blood glucose, blood pressure and lipid control and follow the eye-care schedule advised by your clinician.", treatment:"Mild disease is often monitored rather than treated invasively; the final plan belongs to an eye-care professional."},
+   2:{cause:"Moderate NPDR can be associated with increasing microaneurysms, hemorrhages and/or hard exudates.", prevention:"Maintain careful metabolic control and attend closer retinal follow-up.", treatment:"Management depends on clinical findings and may include closer surveillance or treatment if sight-threatening changes are present."},
+   3:{cause:"Severe NPDR can involve extensive hemorrhages, venous beading and retinal ischemic changes.", prevention:"Prompt specialist follow-up and careful control of diabetes and blood pressure are important.", treatment:"An ophthalmologist may consider treatment such as laser therapy depending on examination findings."},
+   4:{cause:"PDR is associated with abnormal new blood-vessel growth and can seriously threaten vision.", prevention:"Do not delay specialist evaluation and maintain careful metabolic control.", treatment:"Depending on examination findings, treatment may include anti-VEGF therapy, laser photocoagulation or other retinal procedures."}
+ }[r.grade];
+
+ $("explain").innerHTML=`
+ <button class="btn secondary" onclick="go('result')">← Back to result</button>
+ <span class="pill" style="display:block;width:max-content;margin-top:25px">EXPLAINABLE AI</span>
+ <h1>Understand the screening result</h1>
+ <p style="color:var(--muted)">Visual evidence is shown below, followed by a plain-language clinical-style explanation of the stage, prevention and possible management.</p>
+
+ <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(210px,1fr));margin-top:25px">
+   ${["ORIGINAL IMAGE","AI ATTENTION / HEATMAP","SHAP","GRAD-CAM"].map((t,i)=>`<div class="card"><b style="font-size:11px">${t}</b><div class="imagepanel" style="margin-top:10px">${cardImgs[i]}</div></div>`).join("")}
+ </div>
+
+ <div class="card" style="margin-top:20px">
+   <h2>Visual explanation</h2>
+   <p style="color:var(--muted);font-size:13px">Move through the four views to inspect the original image and complementary explanation maps.</p>
+   <div class="stepper">${["Original","Heatmap","SHAP","Grad-CAM"].map((x,i)=>`<span class="step-chip ${state.explainStep==i?"active":""}">${i+1}.${x}</span>`).join("")}</div>
+   <div class="explain-stage">${explainImg()}<div style="position:absolute;top:14px;left:14px;background:#ffffffdd;color:#173a3a;padding:8px 12px;border-radius:10px;font-size:12px;font-weight:700;z-index:3">${mode}</div><button class="next-arrow" aria-label="Next explanation" onclick="advanceExplain()" ${state.explainStep==3?"disabled":""}>→</button><div style="position:absolute;right:18px;bottom:15px;color:white;font-size:11px;z-index:3">${state.explainStep==3?"End of comparison":"Click → to continue"}</div></div>
+   <div style="display:flex;align-items:center;justify-content:space-between;margin-top:13px;gap:15px"><span class="explain-copy">${copy}</span><button class="btn secondary" onclick="state.explainStep=0;renderExplain()">↺ Restart</button></div>
+ </div>
+
+ <div class="grid" style="grid-template-columns:repeat(3,1fr);margin-top:20px">
+   <div class="card"><h2>What may explain this stage?</h2><p style="color:var(--muted);line-height:1.7">${stageGuidance.cause}</p></div>
+   <div class="card"><h2>Prevention & next steps</h2><p style="color:var(--muted);line-height:1.7">${stageGuidance.prevention}</p></div>
+   <div class="card"><h2>Care / management</h2><p style="color:var(--muted);line-height:1.7">${stageGuidance.treatment}</p></div>
+ </div>
+
+ <div class="notice">🛡 AI-assisted screening only. Explanation maps and educational guidance do not confirm lesions or replace a qualified eye-care professional's examination.</div>`;
+}
+function renderHistory(){
+ const rows=state.history.length?state.history.map((r,i)=>`<tr onclick="state.result=state.history[${i}];go('result')"><td>${r.date}</td><td><b>${r.id}</b></td><td>${r.prediction}</td><td>Grade ${r.grade ?? 0} / 4</td><td>${r.quality}</td><td><span class="pill">${i%2?"Pending":"Reviewed"}</span></td></tr>`).join(""):`<tr><td colspan="6" style="text-align:center;color:#758585;padding:30px">No screenings yet — results will appear here after you run one from New Screening.</td></tr>`;
+ $("history").innerHTML=`<span class="pill">RECORDS</span><h1>Screening History</h1><div class="card" style="padding:0;overflow:auto"><table><thead><tr><th>Date</th><th>Patient ID</th><th>AI Result</th><th>DR Grade</th><th>Quality</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div>`
+}
+function renderInsights(){
+ $("insights").innerHTML=`
+ <span class="pill">TRANSPARENCY</span>
+ <h1>Model Insights</h1>
+ <p style="color:var(--muted)">Final project metrics and measured TFLite edge-benchmark results.</p>
+
+ <div class="grid insightgrid">
+   ${[
+     ["Accuracy","74%","Overall test accuracy"],
+     ["Referable Recall","90.6%","Sensitivity for referable DR"],
+     ["Specificity","88.4%","Non-referable specificity"],
+     ["Referable F1","87.3%","Referable-class F1 score"]
+   ].map(x=>`<div class="card"><small>${x[0]}</small><h2>${x[1]}</h2><small>${x[2]}</small></div>`).join("")}
+ </div>
+
+ <div class="grid" style="grid-template-columns:1fr 1fr;margin-top:20px">
+   <div class="card">
+     <h2>Edge Deployment Benchmark</h2>
+     <div class="grid" style="grid-template-columns:1fr 1fr;gap:12px;margin-top:15px">
+       <div class="kpi"><small>Original Keras</small><b>20.02 MB</b></div>
+       <div class="kpi"><small>Normal TFLite</small><b>16.54 MB</b></div>
+       <div class="kpi"><small>Quantized TFLite</small><b>4.65 MB</b></div>
+       <div class="kpi"><small>Inference</small><b>41.20 ms/image</b></div>
+     </div>
+     <p style="color:var(--muted);line-height:1.7;margin-top:16px">Quantization reduced the model from 20.02 MB to 4.65 MB, approximately a 76.8% size reduction. The 41.20 ms/image figure was measured in the Kaggle TFLite benchmark environment.</p>
+   </div>
+
+   <div class="card">
+     <h2>Model Configuration</h2>
+     <p>Model<br><b>EfficientNetB0</b></p>
+     <p>Input<br><b>224 × 224 × 3</b></p>
+     <p>Output<br><b>5 DR grades (0–4)</b></p>
+     <p>Explainability<br><b>Grad-CAM / SHAP / LIME</b></p>
+     <p>Preprocessing<br><b>Resize + CLAHE</b></p>
+   </div>
+ </div>
+
+ <div class="card" style="margin-top:20px;background:#eaf4f3">
+   <h2>Clinical safety</h2>
+   <p style="color:#587070;line-height:1.7">NETRA AI is a screening and decision-support prototype. Model metrics describe performance on the evaluated project dataset; they do not constitute a clinical validation claim. Final clinical assessment remains with a qualified eye-care professional.</p>
+ </div>`;
+}
+function renderAbout(){$("about").innerHTML=`<div style="max-width:850px"><span class="pill">NETRA AI</span><h1>See the disease. Understand the decision.</h1><p style="font-size:18px;color:var(--muted);line-height:1.7">An explainable AI frontend prototype for diabetic retinopathy screening: retinal image → AI prediction → why the AI predicted it → human clinical review.</p><div class="grid" style="grid-template-columns:1fr 1fr;margin-top:25px">${["AI-assisted screening","Explainable evidence","Image quality awareness","Human review recommended","Offline/local deployment path","4.65 MB quantized TFLite edge model"].map(x=>`<div class="card">✓ &nbsp;<b>${x}</b></div>`).join("")}</div><button class="btn primary" style="margin-top:25px" onclick="go('screening')">Try the prototype</button></div>`}
+function playWalkthrough(){const v=$("walkthroughVideo"),box=$("walkthroughBox");if(!v)return;box.classList.add("playing");v.currentTime=0;const p=v.play();if(p&&p.catch)p.catch(()=>box.classList.remove("playing"));}
+function bindWalkthrough(){const v=$("walkthroughVideo"),box=$("walkthroughBox");if(v&&box)v.addEventListener("ended",()=>box.classList.remove("playing"));}
+$("langBtn").onclick=()=>alert("Language switch UI is ready. English is currently the complete demo language; Hindi labels can be added to the same translation layer.");
+$("menuBtn").onclick=openMobileSidebar;
+
+nav();render();
+</script>
+</body>
+</html>
