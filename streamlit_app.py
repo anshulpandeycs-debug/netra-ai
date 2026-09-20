@@ -1,43 +1,11 @@
 import streamlit as st
-import streamlit.components.v1 as components
 import keras
 import numpy as np
 import cv2
-import base64
-import json
 from PIL import Image
-import io
 
-# Page Configuration to match full-screen web app
-st.set_page_config(
-    page_title="NETRA AI — Explainable DR Screening", 
-    layout="wide", 
-    initial_sidebar_state="collapsed"
-)
+st.set_page_config(page_title="NETRA AI — DR Screening", layout="wide")
 
-# Hide standard Streamlit header, footer, and padding via CSS
-st.markdown("""
-    <style>
-        #MainMenu {visibility: hidden;}
-        header {visibility: hidden;}
-        footer {visibility: hidden;}
-        .block-container {
-            padding-top: 0rem !important;
-            padding-bottom: 0rem !important;
-            padding-left: 0rem !important;
-            padding-right: 0rem !important;
-            max-width: 100% !important;
-        }
-        iframe {
-            display: block;
-            border: none;
-            width: 100vw;
-            height: 100vh;
-        }
-    </style>
-""", unsafe_allow_html=True)
-
-# Load Keras Model
 @st.cache_resource
 def load_netra_model():
     return keras.models.load_model("netraai_final.keras")
@@ -47,7 +15,6 @@ try:
 except Exception as e:
     model = None
 
-# Model Helper Functions
 def preprocess_image(img_array, size=224):
     img = cv2.resize(img_array, (size, size))
     lab = cv2.cvtColor(img, cv2.COLOR_RGB2LAB)
@@ -106,12 +73,36 @@ def generate_explanation(grade, heatmap):
 
 GRADE_LABELS = ["No DR", "Mild DR", "Moderate DR", "Severe DR", "Proliferative DR"]
 
-# Read index.html content
-try:
-    with open("index.html", "r", encoding="utf-8") as f:
-        html_code = f.read()
-except FileNotFoundError:
-    html_code = "<h1>Error: index.html not found in repository root directory.</h1>"
+# UI Layout for Web & Mobile Browsers
+st.title("🩺 NETRA AI — DR Screening")
+st.caption("Upload a retinal fundus image to analyze DR stage and generate visual explanations.")
 
-# Embed HTML in full-screen iframe component
-components.html(html_code, height=1000, scrolling=True)
+uploaded_file = st.file_uploader("Choose a retinal fundus image", type=["png", "jpg", "jpeg"])
+
+if uploaded_file:
+    img = Image.open(uploaded_file).convert("RGB")
+    img_array = np.array(img)
+
+    with st.spinner("Analyzing image with NETRA AI model..."):
+        processed = preprocess_image(img_array, size=224)
+        input_array = np.expand_dims(processed.astype('float32'), axis=0)
+        heatmap, pred_class, confidence = make_gradcam_heatmap(input_array, model)
+        heatmap_resized = cv2.resize(heatmap, (224, 224))
+        heatmap_colored = cv2.applyColorMap(np.uint8(255 * heatmap_resized), cv2.COLORMAP_JET)
+        overlay = cv2.addWeighted(cv2.cvtColor(processed.astype('uint8'), cv2.COLOR_RGB2BGR), 0.6, heatmap_colored, 0.4, 0)
+        overlay_rgb = cv2.cvtColor(overlay, cv2.COLOR_BGR2RGB)
+
+    st.subheader(f"Prediction: {GRADE_LABELS[pred_class]} (Grade {pred_class}/4)")
+    st.write(f"**Confidence:** {confidence*100:.1f}%")
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.image(img_array, caption="Original Image", use_container_width=True)
+    with col2:
+        st.image(cv2.cvtColor(heatmap_colored, cv2.COLOR_BGR2RGB), caption="Heatmap", use_container_width=True)
+    with col3:
+        st.image(overlay_rgb, caption="Grad-CAM Overlay", use_container_width=True)
+
+    st.markdown("### Clinical Explanation")
+    st.write(generate_explanation(pred_class, heatmap_resized))
+    st.info("⚠️ AI-assisted screening prototype — clinical evaluation should be performed by a qualified healthcare professional.")
