@@ -1,14 +1,17 @@
 import streamlit as st
-import tensorflow as tf
+import keras
 import numpy as np
 import cv2
 from PIL import Image
 
+# Page Configuration
 st.set_page_config(page_title="NetraAI — DR Screening", layout="wide")
 
+# Load model with memory caching
 @st.cache_resource
 def load_netra_model():
-    return tf.keras.models.load_model("netraai_final.keras")
+    # Uses Keras 3 loader compatible with TensorFlow 2.16+
+    return keras.models.load_model("netraai_final.keras")
 
 model = load_netra_model()
 
@@ -23,14 +26,17 @@ def preprocess_image(img_array, size=224):
     return img
 
 def make_gradcam_heatmap(img_array, model, last_conv_layer_name='top_conv', pred_index=None):
-    grad_model = tf.keras.models.Model(
+    # Construct gradient model for Grad-CAM
+    grad_model = keras.models.Model(
         [model.inputs], [model.get_layer(last_conv_layer_name).output, model.output]
     )
+    import tensorflow as tf
     with tf.GradientTape() as tape:
         last_conv_layer_output, preds = grad_model(img_array)
         if pred_index is None:
             pred_index = tf.argmax(preds[0])
         class_channel = preds[:, pred_index]
+
     grads = tape.gradient(class_channel, last_conv_layer_output)
     pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
     last_conv_layer_output = last_conv_layer_output[0]
@@ -43,10 +49,13 @@ def make_gradcam_heatmap(img_array, model, last_conv_layer_name='top_conv', pred
 def generate_explanation(grade, heatmap):
     h, w = heatmap.shape
     quadrants = {
-        'superior-nasal': heatmap[:h//2, :w//2].mean(), 'superior-temporal': heatmap[:h//2, w//2:].mean(),
-        'inferior-nasal': heatmap[h//2:, :w//2].mean(), 'inferior-temporal': heatmap[h//2:, w//2:].mean(),
+        'superior-nasal': heatmap[:h//2, :w//2].mean(), 
+        'superior-temporal': heatmap[:h//2, w//2:].mean(),
+        'inferior-nasal': heatmap[h//2:, :w//2].mean(), 
+        'inferior-temporal': heatmap[h//2:, w//2:].mean(),
     }
     hot_region = max(quadrants, key=quadrants.get)
+    
     findings = {
         0: "No visible diabetic retinopathy was detected. The blood vessels and retinal surface appear within normal limits.",
         1: "Mild non-proliferative diabetic retinopathy (NPDR) is present, with early microaneurysms identified.",
@@ -65,6 +74,7 @@ def generate_explanation(grade, heatmap):
 
 GRADE_LABELS = ["No DR", "Mild DR", "Moderate DR", "Severe DR", "Proliferative DR"]
 
+# UI Layout
 st.title("🩺 NetraAI — Explainable AI for Diabetic Retinopathy Screening")
 st.caption("Upload a retinal fundus image to get an AI-assisted DR grading with visual explanation.")
 
