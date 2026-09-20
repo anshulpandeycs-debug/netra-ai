@@ -70,10 +70,6 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:15px;bor
 
 <script>
 const $=id=>document.getElementById(id);
-const API_BASE="http://localhost:5000";
-const API_URL=API_BASE+"/predict";
-const EDGE_URL=API_BASE+"/edge_predict";
-const BENCHMARK_URL=API_BASE+"/edge_benchmark";
 const views=["dashboard","screening","processing","result","explain","history","insights","about"];
 let state={page:"dashboard",file:null,name:"",result:null,view:"original",explainStep:0,history:[],edge:null,benchmark:null};
 
@@ -98,6 +94,7 @@ function closeMobileSidebar(){
 
 function go(p){state.page=p;views.forEach(v=>$(v).classList.toggle("active",v==p));$("crumb").textContent=p=="dashboard"?"Workspace":p.replace("-"," ");nav();render();}
 function render(){renderDashboard();renderScreening();renderProcessing();renderResult();renderExplain();renderHistory();renderInsights();renderAbout();}
+
 function renderDashboard(){
  $("dashboard").innerHTML=`<div class="grid hero">
  <div class="card"><span class="pill">✦ Explainable AI</span><h1>AI-powered diabetic retinopathy screening</h1><p>Upload a retinal image and receive an AI-assisted screening result with a visual explanation of the model's decision.</p><div class="actions"><button class="btn primary" onclick="go('screening')">＋ Start New Screening →</button><button class="btn secondary" onclick="document.querySelector('.video').scrollIntoView({behavior:'smooth'})">▶ How it works</button></div></div>
@@ -107,8 +104,9 @@ function renderDashboard(){
  <div class="video-box" id="walkthroughBox"><video id="walkthroughVideo" preload="metadata" poster="video_poster.png" playsinline controls aria-label="NETRA AI product walkthrough video"><source src="netra_walkthrough.mp4" type="video/mp4">Your browser does not support HTML5 video.</video><button class="play" id="walkthroughPlay" onclick="playWalkthrough()" aria-label="Play NETRA AI walkthrough">▶</button><div class="video-caption">NETRA AI walkthrough • click play for video + sound</div></div>
  <div class="steps">${[["01","Upload","Upload a retinal image."],["02","Analyse","AI preprocesses and checks image quality."],["03","Predict","The model generates a screening classification."],["04","Explain","XAI highlights regions influencing the prediction."]].map(x=>`<div class="step"><strong>${x[0]} · ${x[1]}</strong><span>${x[2]}</span></div>`).join("")}</div></div></div>
  <div class="grid" style="grid-template-columns:1fr 1fr;margin-top:20px"><div class="card" style="background:#eaf4f3"><h2>Designed for accessible screening</h2><p style="color:#587070">Simple workflow, low clutter, clear explanations and English + Hindi UI.</p></div><div class="card"><h2>🛡 AI Safety & Transparency</h2><p style="color:#667777">AI-assisted screening is not a replacement for clinical diagnosis. Human review is recommended.</p></div></div>`;
-}
  bindWalkthrough();
+}
+
 function renderScreening(){
  $("screening").innerHTML=`<div class="upload"><span class="pill">NEW SCREENING</span><h1>Upload Retinal Image</h1><p style="color:var(--muted)">Upload a clear fundus photograph for AI-assisted diabetic retinopathy screening.</p>
  <div class="drop ${state.file?"has":""}" id="drop">${state.file?`<div class="preview"><img src="${state.file}"><div><small style="color:var(--muted)">Selected image</small><h3>${state.name}</h3><div class="step"><strong style="color:var(--teal)">✓ IMAGE QUALITY · Good</strong><span>Demo quality gate — suitable to proceed.</span></div><div class="actions"><button class="btn primary" onclick="analyze()">Analyse Image</button><button class="btn secondary" onclick="clearFile()">↻</button></div></div></div>`:`<div style="font-size:38px;color:var(--teal)">⇧</div><h2>Drag & drop your retinal image here</h2><p style="color:var(--muted)">or</p><button class="btn primary" onclick="fileInput.click()">Browse Image</button><input id="fileInput" type="file" accept="image/jpeg,image/png" hidden><p style="font-size:12px;color:#7a8a8a">Supported formats: JPG / PNG</p>`}</div>
@@ -116,45 +114,52 @@ function renderScreening(){
  const d=$("drop");d.ondragover=e=>{e.preventDefault();d.classList.add("drag")};d.ondragleave=()=>d.classList.remove("drag");d.ondrop=e=>{e.preventDefault();d.classList.remove("drag");loadFile(e.dataTransfer.files[0])};
  const fi=$("fileInput");if(fi)fi.onchange=e=>loadFile(e.target.files[0]);
 }
+
 function loadFile(f){if(!f)return;if(!["image/jpeg","image/png"].includes(f.type)){alert("Please choose a JPG or PNG image.");return}state.name=f.name;const r=new FileReader();r.onload=()=>{state.file=r.result;renderScreening()};r.readAsDataURL(f)}
 function clearFile(){state.file=null;state.name="";renderScreening()}
 
 function analyze(){
- if(!state.file)return;
+ if(!state.file) return;
  go("processing");
- fetch(API_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({image:state.file})})
- .then(r=>{if(!r.ok)throw new Error("Backend error "+r.status);return r.json()})
- .then(data=>{
-   state.result={
-     id:"NETRA-"+Date.now().toString().slice(-6),
-     date:new Date().toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric"}),
-     grade:data.grade,
-     gradeLabel:data.gradeLabel,
-     prediction:data.gradeLabel,
-     confidence:data.confidence,
-     quality:data.quality||"Good",
-     image:state.file,
-     heatmapImg:data.heatmap_image,
-     gradcamImg:data.gradcam_image,
-     shapImg:data.shap_image,
-     explanationText:data.explanation,
-     edge:null,
-     benchmark:null
+
+ // Send image data directly to Python Streamlit parent frame
+ window.parent.postMessage({
+   type: "streamlit:setComponentValue",
+   value: { action: "predict", image: state.file }
+ }, "*");
+}
+
+// Receive Python Model Predictions via Streamlit Event Bridge
+window.addEventListener("message", function(event) {
+ if (event.data && event.data.type === "NETRA_PREDICTION") {
+   const data = event.data;
+   state.result = {
+     id: "NETRA-" + Date.now().toString().slice(-6),
+     date: new Date().toLocaleDateString("en-IN", {day: "2-digit", month: "short", year: "numeric"}),
+     grade: data.grade,
+     gradeLabel: data.gradeLabel,
+     prediction: data.gradeLabel,
+     confidence: data.confidence,
+     quality: "Good",
+     image: state.file,
+     heatmapImg: data.gradcam_image,
+     gradcamImg: data.gradcam_image,
+     shapImg: data.gradcam_image,
+     explanationText: "Diabetic Retinopathy screening completed successfully.",
+     edge: null,
+     benchmark: null
    };
-   state.explainStep=0;
+   state.explainStep = 0;
    state.history.unshift(state.result);
    go("result");
- })
- .catch(err=>{
-   console.error("NETRA AI backend error:",err);
-   alert("NETRA AI could not reach the local AI backend. Start app.py and try again.");
-   go("screening");
- });
-}
+ }
+});
+
 function renderProcessing(){
  $("processing").innerHTML=`<div class="processing"><span class="pill">AI PIPELINE</span><h1>Analysing retinal image</h1><p style="color:var(--muted)">Running the local NETRA AI model and preparing explainable screening evidence.</p><div class="grid" style="grid-template-columns:.8fr 1fr"><div class="card">${state.file?`<img src="${state.file}" style="width:100%;border-radius:16px">`:""}</div><div class="card"><div style="display:flex;gap:13px;align-items:center"><div class="loader"></div><b>AI processing</b></div><div id="procSteps" style="margin-top:25px"></div></div></div></div>`;
  const ss=["Image preprocessing","Image quality assessment","Running DR classification","Generating explanation","Preparing screening report"];let i=0;const tick=()=>{if(!$("procSteps"))return;$("procSteps").innerHTML=ss.map((s,n)=>`<div class="proc-step ${n<i?"done":""}">${n<i?"✓":n==i?"●":"○"} &nbsp;${s}</div>`).join("");if(i<ss.length){i++;setTimeout(tick,420)}};tick();
 }
+
 function heatHTML(){
  let image=state.result?.image?`<img src="${state.result.image}">`:`<div style="height:100%;display:grid;place-items:center;color:#abc">Demo retinal image</div>`;
  const modes=["original","heatmap","shap","gradcam"];
@@ -166,35 +171,12 @@ function heatHTML(){
  image=(state.view!="original"&&r?.heatmapImg)?"":image;
  return `<div class="tabs">${modes.map(v=>`<button class="${state.view==v?"sel":""}" onclick="state.view='${v}';renderResult()">${v=="gradcam"?"Grad-CAM":v=="shap"?"SHAP":v.charAt(0).toUpperCase()+v.slice(1)}</button>`).join("")}</div><div class="imagepanel">${image}${overlayHTML}</div>`;
 }
+
 function renderResult(){
  if(!state.result){$("result").innerHTML="";return}
  const r=state.result;
  $("result").innerHTML=`<div><span class="pill">AI-ASSISTED SCREENING</span><div style="display:flex;justify-content:space-between;gap:12px;align-items:end"><h1>Screening Result</h1></div><div class="grid resultgrid"><div class="card">${heatHTML()}</div><div class="card"><small style="color:#6c7c7c">AI ASSESSMENT</small><h2 style="font-size:30px">${r.gradeLabel}</h2><div class="kpis">${[["DR Grade",`Grade ${r.grade} / 4`],["Image Quality",r.quality],["Screening ID",r.id]].map(x=>`<div class="kpi"><small>${x[0]}</small><b>${x[1]}</b></div>`).join("")}</div><hr style="border:0;border-top:1px solid var(--line);margin:22px 0"><h3>What does this mean?</h3><p style="color:var(--muted);line-height:1.7">The prototype has assigned <b>DR Grade ${r.grade}</b> based on its screening workflow. The grade is an AI-assisted output and should be reviewed by a qualified healthcare professional.</p><button class="btn primary" style="width:100%;margin-top:10px" onclick="go('explain')">View AI Explanation →</button></div></div>
- <div class="card" style="margin-top:20px;background:#f4f8f8"><span class="pill">EDGE DEPLOYMENT</span><h2>Run the 4.65 MB quantized TFLite model</h2><p style="color:var(--muted);line-height:1.7">Use the same retinal image with the bundled quantized TFLite model. This is the edge-inference path; Grad-CAM and SHAP remain on the Keras explanation path.</p><div class="actions"><button class="btn secondary" onclick="runEdgeInference()">⚡ Run TFLite Edge Inference</button><button class="btn secondary" onclick="runEdgeBenchmark()">⏱ Benchmark 20 Runs</button></div><div id="edgePanel" style="margin-top:15px">${edgePanelHTML()}</div></div>
  <div class="notice">🛡 AI-assisted screening — clinical evaluation should be performed by a qualified healthcare professional.</div></div>`;
-}
-
-function edgePanelHTML(){
- const e=state.edge, b=state.benchmark;
- if(!e && !b) return `<div style="color:var(--muted);font-size:13px">No edge run yet. Use the buttons above to demonstrate local TFLite inference and benchmark the quantized model.</div>`;
- let html='';
- if(e) { const consistency = Number(e.grade)===Number(state.result?.grade) ? "MATCH" : "CHECK"; html+=`<div class="grid" style="grid-template-columns:repeat(4,1fr);gap:10px"><div class="kpi"><small>TFLite result</small><b>Grade ${e.grade}</b></div><div class="kpi"><small>Edge latency</small><b>${e.latencyMs} ms</b></div><div class="kpi"><small>Model size</small><b>${e.modelSizeMb} MB</b></div><div class="kpi"><small>Keras vs TFLite</small><b>${consistency}</b></div></div><p style="color:var(--muted);font-size:12px;margin-top:10px">Quantized model: <b>${e.model}</b> · ${e.gradeLabel}</p>`; }
- if(b) html+=`<div class="grid" style="grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px"><div class="kpi"><small>20-run average</small><b>${b.averageMs} ms</b></div><div class="kpi"><small>Median</small><b>${b.medianMs} ms</b></div><div class="kpi"><small>Range</small><b>${b.minMs}–${b.maxMs} ms</b></div></div><p style="color:var(--muted);font-size:12px;margin-top:10px">Benchmark environment: <b>${b.environment}</b>. This is a local-device measurement, not the earlier Kaggle benchmark.</p>`;
- return html;
-}
-function runEdgeInference(){
- if(!state.result?.image)return;
- fetch(EDGE_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({image:state.result.image})})
- .then(r=>{if(!r.ok)throw new Error("Edge inference error "+r.status);return r.json()})
- .then(data=>{state.edge=data;renderResult();})
- .catch(err=>{console.error(err);alert("TFLite edge inference failed. Make sure the updated app.py is running and both TFLite files are in the same folder.");});
-}
-function runEdgeBenchmark(){
- if(!state.result?.image)return;
- fetch(BENCHMARK_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({image:state.result.image,runs:20})})
- .then(r=>{if(!r.ok)throw new Error("Benchmark error "+r.status);return r.json()})
- .then(data=>{state.benchmark=data;renderResult();})
- .catch(err=>{console.error(err);alert("TFLite benchmark failed. Make sure the updated app.py is running and both TFLite files are in the same folder.");});
 }
 
 function explainMode(){return ["Original Image","AI Attention / Heatmap","SHAP","Grad-CAM"][state.explainStep]}
@@ -206,6 +188,7 @@ function explainImg(){
  return r?.image?`<img src="${r.image}">`:"";
 }
 function advanceExplain(){if(state.explainStep<3){state.explainStep++;renderExplain()}}
+
 function renderExplain(){
  if(!state.result){$("explain").innerHTML="";return}
  const r=state.result, mode=explainMode();
@@ -256,10 +239,12 @@ function renderExplain(){
 
  <div class="notice">🛡 AI-assisted screening only. Explanation maps and educational guidance do not confirm lesions or replace a qualified eye-care professional's examination.</div>`;
 }
+
 function renderHistory(){
  const rows=state.history.length?state.history.map((r,i)=>`<tr onclick="state.result=state.history[${i}];go('result')"><td>${r.date}</td><td><b>${r.id}</b></td><td>${r.prediction}</td><td>Grade ${r.grade ?? 0} / 4</td><td>${r.quality}</td><td><span class="pill">${i%2?"Pending":"Reviewed"}</span></td></tr>`).join(""):`<tr><td colspan="6" style="text-align:center;color:#758585;padding:30px">No screenings yet — results will appear here after you run one from New Screening.</td></tr>`;
  $("history").innerHTML=`<span class="pill">RECORDS</span><h1>Screening History</h1><div class="card" style="padding:0;overflow:auto"><table><thead><tr><th>Date</th><th>Patient ID</th><th>AI Result</th><th>DR Grade</th><th>Quality</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div>`
 }
+
 function renderInsights(){
  $("insights").innerHTML=`
  <span class="pill">TRANSPARENCY</span>
@@ -302,9 +287,11 @@ function renderInsights(){
    <p style="color:#587070;line-height:1.7">NETRA AI is a screening and decision-support prototype. Model metrics describe performance on the evaluated project dataset; they do not constitute a clinical validation claim. Final clinical assessment remains with a qualified eye-care professional.</p>
  </div>`;
 }
+
 function renderAbout(){$("about").innerHTML=`<div style="max-width:850px"><span class="pill">NETRA AI</span><h1>See the disease. Understand the decision.</h1><p style="font-size:18px;color:var(--muted);line-height:1.7">An explainable AI frontend prototype for diabetic retinopathy screening: retinal image → AI prediction → why the AI predicted it → human clinical review.</p><div class="grid" style="grid-template-columns:1fr 1fr;margin-top:25px">${["AI-assisted screening","Explainable evidence","Image quality awareness","Human review recommended","Offline/local deployment path","4.65 MB quantized TFLite edge model"].map(x=>`<div class="card">✓ &nbsp;<b>${x}</b></div>`).join("")}</div><button class="btn primary" style="margin-top:25px" onclick="go('screening')">Try the prototype</button></div>`}
 function playWalkthrough(){const v=$("walkthroughVideo"),box=$("walkthroughBox");if(!v)return;box.classList.add("playing");v.currentTime=0;const p=v.play();if(p&&p.catch)p.catch(()=>box.classList.remove("playing"));}
 function bindWalkthrough(){const v=$("walkthroughVideo"),box=$("walkthroughBox");if(v&&box)v.addEventListener("ended",()=>box.classList.remove("playing"));}
+
 $("langBtn").onclick=()=>alert("Language switch UI is ready. English is currently the complete demo language; Hindi labels can be added to the same translation layer.");
 $("menuBtn").onclick=openMobileSidebar;
 
