@@ -7,7 +7,12 @@
 <style>
 :root{--teal:#146c6e;--dark:#173a3a;--bg:#f7faf9;--line:#dce7e5;--muted:#657575;--card:#fff}
 *{box-sizing:border-box}body{margin:0;font-family:Inter,Segoe UI,Arial,sans-serif;background:var(--bg);color:#172b2b}button,input{font:inherit}button{cursor:pointer}
-.app{display:flex;min-height:100vh}.side{width:255px;background:#fff;border-right:1px solid var(--line);padding:22px 14px;display:flex;flex-direction:column;position:fixed;inset:0 auto 0 0;z-index:20}
+.app{display:flex;min-height:100vh}
+.side{width:255px;background:#fff;border-right:1px solid var(--line);padding:22px 14px;display:flex;flex-direction:column;position:fixed;inset:0 auto 0 0;z-index:20;transition:transform 0.25s ease-in-out}
+.close-btn{display:none;position:absolute;top:15px;right:15px;background:none;border:none;font-size:22px;color:var(--muted);padding:5px;cursor:pointer;z-index:21}
+.sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:19;backdrop-filter:blur(2px)}
+.sidebar-overlay.active{display:block}
+
 .logo{display:flex;gap:11px;align-items:center;padding:3px 10px 25px}.logo-icon{width:40px;height:40px;border-radius:12px;background:var(--teal);color:white;display:grid;place-items:center;font-size:20px;font-weight:800}.logo b{font-size:18px}.logo small{display:block;color:#6b7c7c;font-size:9px;letter-spacing:1.7px;margin-top:2px}
 .nav button{width:100%;border:0;background:transparent;padding:12px 13px;text-align:left;border-radius:11px;color:#526565;margin:2px 0}.nav button.active,.nav button:hover{background:#e8f3f2;color:var(--teal);font-weight:700}
 .bottom{margin-top:auto}.status,.lang{border:1px solid var(--line);border-radius:11px;padding:10px 12px;margin-top:9px;font-size:12px}.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#22a06b;margin-right:7px}
@@ -25,13 +30,27 @@ h1{font-size:43px;line-height:1.06;margin:12px 0}.hero p{color:var(--muted);font
 table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:15px;border-bottom:1px solid #edf1f0;font-size:13px}th{color:#657575;background:#f5f8f7}tbody tr:hover{background:#f8fbfa;cursor:pointer}
 .insightgrid{grid-template-columns:repeat(4,1fr)}.bar{height:180px;display:flex;align-items:end;gap:18px;padding:15px;background:#f5f9f8;border-radius:16px}.bar i{flex:1;background:#79a6a4;border-radius:7px 7px 0 0;min-height:20px}.barlabel{display:flex;justify-content:space-around;font-size:11px;color:#667}
 .mobile{display:none}
-@media(max-width:900px){.side{display:none}.main{margin-left:0}.mobile{display:block}.top{padding:0 16px}.content{padding:20px}.hero,.resultgrid,.preview{grid-template-columns:1fr}.stats,.insightgrid{grid-template-columns:1fr 1fr}h1{font-size:35px}}
+
+@media(max-width:900px){
+  .side{display:none;transform:translateX(-100%)}
+  .side.open{display:flex !important;transform:translateX(0)}
+  .close-btn{display:block}
+  .main{margin-left:0}
+  .mobile{display:block}
+  .top{padding:0 16px}
+  .content{padding:20px}
+  .hero,.resultgrid,.preview{grid-template-columns:1fr}
+  .stats,.insightgrid{grid-template-columns:1fr 1fr}
+  h1{font-size:35px}
+}
 @media(max-width:520px){.stats,.insightgrid{grid-template-columns:1fr}.drop{padding:28px 15px}}
 </style>
 </head>
 <body>
 <div class="app">
-<aside class="side">
+<div class="sidebar-overlay" id="overlay" onclick="closeMobileSidebar()"></div>
+<aside class="side" id="sidebar">
+<button class="close-btn" id="closeSidebarBtn" onclick="closeMobileSidebar()">✕</button>
 <div class="logo"><div class="logo-icon">◎</div><div><b>NETRA AI</b><small>EXPLAINABLE SCREENING</small></div></div>
 <nav class="nav" id="nav"></nav>
 <div class="bottom"><div class="status"><span class="dot"></span>System Ready</div><button class="lang" id="langBtn">🌐 English / हिंदी</button></div>
@@ -51,18 +70,32 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:15px;bor
 
 <script>
 const $=id=>document.getElementById(id);
-/* NETRA-CONNECT: point this at your Flask backend (see app.py) */
 const API_BASE="http://localhost:5000";
 const API_URL=API_BASE+"/predict";
 const EDGE_URL=API_BASE+"/edge_predict";
 const BENCHMARK_URL=API_BASE+"/edge_benchmark";
 const views=["dashboard","screening","processing","result","explain","history","insights","about"];
 let state={page:"dashboard",file:null,name:"",result:null,view:"original",explainStep:0,history:[],edge:null,benchmark:null};
+
 function nav(){
  const labels={dashboard:"⌂  Dashboard",screening:"◉  New Screening",history:"◷  Screening History",insights:"▥  Model Insights",about:"ⓘ  About"};
  $("nav").innerHTML=Object.entries(labels).map(([k,v])=>`<button class="${state.page==k?"active":""}" data-go="${k}">${v}</button>`).join("");
- document.querySelectorAll("[data-go]").forEach(b=>b.onclick=()=>go(b.dataset.go));
+ document.querySelectorAll("[data-go]").forEach(b=>b.onclick=()=>{
+   go(b.dataset.go);
+   closeMobileSidebar();
+ });
 }
+
+function openMobileSidebar(){
+ $("sidebar").classList.add("open");
+ $("overlay").classList.add("active");
+}
+
+function closeMobileSidebar(){
+ $("sidebar").classList.remove("open");
+ $("overlay").classList.remove("active");
+}
+
 function go(p){state.page=p;views.forEach(v=>$(v).classList.toggle("active",v==p));$("crumb").textContent=p=="dashboard"?"Workspace":p.replace("-"," ");nav();render();}
 function render(){renderDashboard();renderScreening();renderProcessing();renderResult();renderExplain();renderHistory();renderInsights();renderAbout();}
 function renderDashboard(){
@@ -85,7 +118,7 @@ function renderScreening(){
 }
 function loadFile(f){if(!f)return;if(!["image/jpeg","image/png"].includes(f.type)){alert("Please choose a JPG or PNG image.");return}state.name=f.name;const r=new FileReader();r.onload=()=>{state.file=r.result;renderScreening()};r.readAsDataURL(f)}
 function clearFile(){state.file=null;state.name="";renderScreening()}
-/* NETRA-CONNECT: real local backend call. No random/mock prediction fallback. */
+
 function analyze(){
  if(!state.file)return;
  go("processing");
@@ -126,12 +159,11 @@ function heatHTML(){
  let image=state.result?.image?`<img src="${state.result.image}">`:`<div style="height:100%;display:grid;place-items:center;color:#abc">Demo retinal image</div>`;
  const modes=["original","heatmap","shap","gradcam"];
  const r=state.result;
- /* NETRA-CONNECT: use the real backend image if we have one, otherwise fall back to the old CSS glow placeholder */
  let overlayHTML="";
  if(state.view=="heatmap")overlayHTML=r?.heatmapImg?`<img src="${r.heatmapImg}">`:'<div class="heat"></div>';
  else if(state.view=="shap")overlayHTML=r?.shapImg?`<img src="${r.shapImg}">`:'<div class="explain-overlay shap"></div>';
  else if(state.view=="gradcam")overlayHTML=r?.gradcamImg?`<img src="${r.gradcamImg}">`:'<div class="explain-overlay gradcam"></div>';
- image=(state.view!="original"&&r?.heatmapImg)?"":image; /* real result images already fill the panel, don't double-stack the original underneath */
+ image=(state.view!="original"&&r?.heatmapImg)?"":image;
  return `<div class="tabs">${modes.map(v=>`<button class="${state.view==v?"sel":""}" onclick="state.view='${v}';renderResult()">${v=="gradcam"?"Grad-CAM":v=="shap"?"SHAP":v.charAt(0).toUpperCase()+v.slice(1)}</button>`).join("")}</div><div class="imagepanel">${image}${overlayHTML}</div>`;
 }
 function renderResult(){
@@ -159,7 +191,6 @@ function runEdgeInference(){
 }
 function runEdgeBenchmark(){
  if(!state.result?.image)return;
- const btns=document.querySelectorAll("#result button");
  fetch(BENCHMARK_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({image:state.result.image,runs:20})})
  .then(r=>{if(!r.ok)throw new Error("Benchmark error "+r.status);return r.json()})
  .then(data=>{state.benchmark=data;renderResult();})
@@ -167,7 +198,6 @@ function runEdgeBenchmark(){
 }
 
 function explainMode(){return ["Original Image","AI Attention / Heatmap","SHAP","Grad-CAM"][state.explainStep]}
-/* NETRA-CONNECT: real backend images by step, falling back to the old CSS glow if this result has no real data (e.g. seeded history rows) */
 function explainImg(){
  const r=state.result;
  if(state.explainStep==1)return r?.heatmapImg?`<img src="${r.heatmapImg}">`:(r?.image?`<img src="${r.image}">`:"")+"<div class='explain-overlay heatmap'></div>";
@@ -175,7 +205,6 @@ function explainImg(){
  if(state.explainStep==3)return r?.gradcamImg?`<img src="${r.gradcamImg}">`:(r?.image?`<img src="${r.image}">`:"")+"<div class='explain-overlay gradcam'></div>";
  return r?.image?`<img src="${r.image}">`:"";
 }
-function explainOverlay(){return ""} /* kept for backward-compat with any other callers; overlay logic now lives in explainImg() */
 function advanceExplain(){if(state.explainStep<3){state.explainStep++;renderExplain()}}
 function renderExplain(){
  if(!state.result){$("explain").innerHTML="";return}
@@ -214,7 +243,7 @@ function renderExplain(){
  <div class="card" style="margin-top:20px">
    <h2>Visual explanation</h2>
    <p style="color:var(--muted);font-size:13px">Move through the four views to inspect the original image and complementary explanation maps.</p>
-   <div class="stepper">${["Original","Heatmap","SHAP","Grad-CAM"].map((x,i)=>`<span class="step-chip ${state.explainStep==i?"active":""}">${i+1}. ${x}</span>`).join("")}</div>
+   <div class="stepper">${["Original","Heatmap","SHAP","Grad-CAM"].map((x,i)=>`<span class="step-chip ${state.explainStep==i?"active":""}">${i+1}.${x}</span>`).join("")}</div>
    <div class="explain-stage">${explainImg()}<div style="position:absolute;top:14px;left:14px;background:#ffffffdd;color:#173a3a;padding:8px 12px;border-radius:10px;font-size:12px;font-weight:700;z-index:3">${mode}</div><button class="next-arrow" aria-label="Next explanation" onclick="advanceExplain()" ${state.explainStep==3?"disabled":""}>→</button><div style="position:absolute;right:18px;bottom:15px;color:white;font-size:11px;z-index:3">${state.explainStep==3?"End of comparison":"Click → to continue"}</div></div>
    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:13px;gap:15px"><span class="explain-copy">${copy}</span><button class="btn secondary" onclick="state.explainStep=0;renderExplain()">↺ Restart</button></div>
  </div>
@@ -277,7 +306,8 @@ function renderAbout(){$("about").innerHTML=`<div style="max-width:850px"><span 
 function playWalkthrough(){const v=$("walkthroughVideo"),box=$("walkthroughBox");if(!v)return;box.classList.add("playing");v.currentTime=0;const p=v.play();if(p&&p.catch)p.catch(()=>box.classList.remove("playing"));}
 function bindWalkthrough(){const v=$("walkthroughVideo"),box=$("walkthroughBox");if(v&&box)v.addEventListener("ended",()=>box.classList.remove("playing"));}
 $("langBtn").onclick=()=>alert("Language switch UI is ready. English is currently the complete demo language; Hindi labels can be added to the same translation layer.");
-$("menuBtn").onclick=()=>document.querySelector(".side").style.display=document.querySelector(".side").style.display==="flex"?"none":"flex";
+$("menuBtn").onclick=openMobileSidebar;
+
 nav();render();
 </script>
 </body>
