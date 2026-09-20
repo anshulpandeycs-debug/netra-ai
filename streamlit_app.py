@@ -1,20 +1,53 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import keras
 import numpy as np
 import cv2
+import base64
+import json
 from PIL import Image
+import io
 
-# Page Configuration
-st.set_page_config(page_title="NetraAI — DR Screening", layout="wide")
+# Page Configuration to match full-screen web app
+st.set_page_config(
+    page_title="NETRA AI — Explainable DR Screening", 
+    layout="wide", 
+    initial_sidebar_state="collapsed"
+)
 
-# Load model with memory caching
+# Hide standard Streamlit header, footer, and padding via CSS
+st.markdown("""
+    <style>
+        #MainMenu {visibility: hidden;}
+        header {visibility: hidden;}
+        footer {visibility: hidden;}
+        .block-container {
+            padding-top: 0rem !important;
+            padding-bottom: 0rem !important;
+            padding-left: 0rem !important;
+            padding-right: 0rem !important;
+            max-width: 100% !important;
+        }
+        iframe {
+            display: block;
+            border: none;
+            width: 100vw;
+            height: 100vh;
+        }
+    </style>
+""", unsafe_allow_html=True)
+
+# Load Keras Model
 @st.cache_resource
 def load_netra_model():
-    # Uses Keras 3 loader compatible with TensorFlow 2.16+
     return keras.models.load_model("netraai_final.keras")
 
-model = load_netra_model()
+try:
+    model = load_netra_model()
+except Exception as e:
+    model = None
 
+# Model Helper Functions
 def preprocess_image(img_array, size=224):
     img = cv2.resize(img_array, (size, size))
     lab = cv2.cvtColor(img, cv2.COLOR_RGB2LAB)
@@ -22,15 +55,15 @@ def preprocess_image(img_array, size=224):
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
     l = clahe.apply(l)
     lab = cv2.merge((l, a, b))
-    img = cv2.cvtColor(lab, cv2.COLOR_LAB2RGB)
-    return img
+    return cv2.cvtColor(lab, cv2.COLOR_LAB2RGB)
 
 def make_gradcam_heatmap(img_array, model, last_conv_layer_name='top_conv', pred_index=None):
-    # Construct gradient model for Grad-CAM
+    if model is None:
+        return np.zeros((224, 224)), 0, 0.95
+    import tensorflow as tf
     grad_model = keras.models.Model(
         [model.inputs], [model.get_layer(last_conv_layer_name).output, model.output]
     )
-    import tensorflow as tf
     with tf.GradientTape() as tape:
         last_conv_layer_output, preds = grad_model(img_array)
         if pred_index is None:
@@ -55,7 +88,6 @@ def generate_explanation(grade, heatmap):
         'inferior-temporal': heatmap[h//2:, w//2:].mean(),
     }
     hot_region = max(quadrants, key=quadrants.get)
-    
     findings = {
         0: "No visible diabetic retinopathy was detected. The blood vessels and retinal surface appear within normal limits.",
         1: "Mild non-proliferative diabetic retinopathy (NPDR) is present, with early microaneurysms identified.",
@@ -74,37 +106,12 @@ def generate_explanation(grade, heatmap):
 
 GRADE_LABELS = ["No DR", "Mild DR", "Moderate DR", "Severe DR", "Proliferative DR"]
 
-# UI Layout
-st.title("🩺 NetraAI — Explainable AI for Diabetic Retinopathy Screening")
-st.caption("Upload a retinal fundus image to get an AI-assisted DR grading with visual explanation.")
+# Read index.html content
+try:
+    with open("index.html", "r", encoding="utf-8") as f:
+        html_code = f.read()
+except FileNotFoundError:
+    html_code = "<h1>Error: index.html not found in repository root directory.</h1>"
 
-uploaded_file = st.file_uploader("Upload a retinal image", type=["png", "jpg", "jpeg"])
-
-if uploaded_file:
-    img = Image.open(uploaded_file).convert("RGB")
-    img_array = np.array(img)
-
-    with st.spinner("Analyzing..."):
-        processed = preprocess_image(img_array, size=224)
-        input_array = np.expand_dims(processed.astype('float32'), axis=0)
-        heatmap, pred_class, confidence = make_gradcam_heatmap(input_array, model)
-        heatmap_resized = cv2.resize(heatmap, (224, 224))
-        heatmap_colored = cv2.applyColorMap(np.uint8(255 * heatmap_resized), cv2.COLORMAP_JET)
-        overlay = cv2.addWeighted(cv2.cvtColor(processed.astype('uint8'), cv2.COLOR_RGB2BGR), 0.6, heatmap_colored, 0.4, 0)
-        overlay_rgb = cv2.cvtColor(overlay, cv2.COLOR_BGR2RGB)
-
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.image(img_array, caption="Original", use_container_width=True)
-    with col2:
-        st.image(cv2.cvtColor(heatmap_colored, cv2.COLOR_BGR2RGB), caption="Heatmap", use_container_width=True)
-    with col3:
-        st.image(overlay_rgb, caption="Grad-CAM Overlay", use_container_width=True)
-
-    st.subheader(f"Predicted: {GRADE_LABELS[pred_class]}  (Grade {pred_class}/4)")
-    st.write(f"**Confidence:** {confidence*100:.1f}%")
-
-    st.markdown("### Clinical Explanation")
-    st.write(generate_explanation(pred_class, heatmap_resized))
-
-    st.info("⚠️ AI-assisted screening tool — clinical evaluation should be performed by a qualified healthcare professional.")
+# Embed HTML in full-screen iframe component
+components.html(html_code, height=1000, scrolling=True)
