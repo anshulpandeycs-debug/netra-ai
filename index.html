@@ -108,62 +108,9 @@ function renderDashboard(){
 }
 
 function renderScreening(){
- $("screening").innerHTML=`<div class="upload"><span class="pill">NEW SCREENING</span><h1>Upload Retinal Image</h1><p style="color:var(--muted)">Upload a clear fundus photograph for AI-assisted diabetic retinopathy screening.</p>
- <div class="drop ${state.file?"has":""}" id="drop">${state.file?`<div class="preview"><img src="${state.file}"><div><small style="color:var(--muted)">Selected image</small><h3>${state.name || "Retinal Fundus Image"}</h3><div class="step"><strong style="color:var(--teal)">✓ IMAGE QUALITY · Good</strong><span>Suitable for AI screening model inference.</span></div><div class="actions"><button class="btn primary" onclick="analyze()">Analyse Image</button><button class="btn secondary" onclick="clearFile()">↻</button></div></div></div>`:`<div style="font-size:38px;color:var(--teal)">⇧</div><h2>Drag & drop your retinal image here</h2><p style="color:var(--muted)">or</p><button class="btn primary" onclick="document.getElementById('fileInput').click()">Browse Image</button><input id="fileInput" type="file" accept="image/jpeg,image/png" hidden><p style="font-size:12px;color:#7a8a8a">Supported formats: JPG / PNG</p>`}</div>
+ $("screening").innerHTML=`<div class="upload"><span class="pill">NEW SCREENING</span><h1>Upload Retinal Image</h1><p style="color:var(--muted)">Select a fundus photo using the top Streamlit uploader bar to run model inference.</p>
+ <div class="drop" id="drop"><div style="font-size:38px;color:var(--teal)">⇧</div><h2>Use the top file picker to run Python AI model</h2><p style="font-size:12px;color:#7a8a8a">Supported formats: JPG / PNG</p></div>
  <div class="grid" style="grid-template-columns:repeat(3,1fr);margin-top:12px">${["✓ Clear retinal/fundus image","✓ JPG or PNG","✓ Suitable resolution"].map(x=>`<div class="card" style="padding:14px;font-size:12px">${x}</div>`).join("")}</div></div>`;
- const d=$("drop");if(d){d.ondragover=e=>{e.preventDefault();d.classList.add("drag")};d.ondragleave=()=>d.classList.remove("drag");d.ondrop=e=>{e.preventDefault();d.classList.remove("drag");loadFile(e.dataTransfer.files[0])};}
- const fi=$("fileInput");if(fi)fi.onchange=e=>loadFile(e.target.files[0]);
-}
-
-function loadFile(f){
- if(!f)return;
- if(!["image/jpeg","image/png"].includes(f.type)){alert("Please choose a JPG or PNG image.");return}
- state.name=f.name;
- const r=new FileReader();
- r.onload=()=>{
-   state.file=r.result;
-   renderScreening();
- };
- r.readAsDataURL(f);
-}
-
-function clearFile(){state.file=null;state.name="";renderScreening()}
-
-function analyze(){
- if(!state.file) return;
- go("processing");
-
- // Compute dynamic DR Grade (0 to 4) based on image byte hash
- let hash = 0;
- for (let i = 0; i < state.file.length; i++) {
-   hash = (hash << 5) - hash + state.file.charCodeAt(i);
-   hash |= 0;
- }
- const computedGrade = Math.abs(hash) % 5;
- const labels = ["No DR", "Mild DR", "Moderate DR", "Severe DR", "Proliferative DR"];
- const computedLabel = labels[computedGrade];
-
- setTimeout(() => {
-   state.result = {
-     id: "NETRA-" + Date.now().toString().slice(-6),
-     date: new Date().toLocaleDateString("en-IN", {day: "2-digit", month: "short", year: "numeric"}),
-     grade: computedGrade,
-     gradeLabel: computedLabel,
-     prediction: computedLabel,
-     confidence: (0.8600 + (Math.abs(hash) % 130) / 10000).toFixed(4),
-     quality: "Good",
-     image: state.file,
-     heatmapImg: null,
-     gradcamImg: null,
-     shapImg: null,
-     explanationText: "Diabetic Retinopathy screening completed successfully via NETRA AI Model.",
-     edge: null,
-     benchmark: null
-   };
-   state.explainStep = 0;
-   state.history.unshift(state.result);
-   go("result");
- }, 2200);
 }
 
 function renderProcessing(){
@@ -176,15 +123,15 @@ function heatHTML(){
  const modes=["original","heatmap","shap","gradcam"];
  const r=state.result;
  let overlayHTML="";
- if(state.view=="heatmap")overlayHTML='<div class="heat"></div>';
- else if(state.view=="shap")overlayHTML='<div class="explain-overlay shap"></div>';
- else if(state.view=="gradcam")overlayHTML='<div class="explain-overlay gradcam"></div>';
+ if(state.view=="heatmap")overlayHTML=r?.heatmapImg?`<img src="${r.heatmapImg}">`:'<div class="heat"></div>';
+ else if(state.view=="shap")overlayHTML=r?.shapImg?`<img src="${r.shapImg}">`:'<div class="explain-overlay shap"></div>';
+ else if(state.view=="gradcam")overlayHTML=r?.gradcamImg?`<img src="${r.gradcamImg}">`:'<div class="explain-overlay gradcam"></div>';
  return `<div class="tabs">${modes.map(v=>`<button class="${state.view==v?"sel":""}" onclick="state.view='${v}';renderResult()">${v=="gradcam"?"Grad-CAM":v=="shap"?"SHAP":v.charAt(0).toUpperCase()+v.slice(1)}</button>`).join("")}</div><div class="imagepanel">${image}${overlayHTML}</div>`;
 }
 
 function renderResult(){
  if(!state.result){
-   $("result").innerHTML=`<div class="card" style="text-align:center;padding:40px"><h2>No active screening result</h2><p style="color:var(--muted)">Please upload a retinal image under New Screening to begin.</p><button class="btn primary" onclick="go('screening')">Go to New Screening</button></div>`;
+   $("result").innerHTML=`<div class="card" style="text-align:center;padding:40px"><h2>No active screening result</h2><p style="color:var(--muted)">Please upload a retinal image using the top uploader bar.</p><button class="btn primary" onclick="go('screening')">Go to Upload</button></div>`;
    return;
  }
  const r=state.result;
@@ -195,9 +142,9 @@ function renderResult(){
 function explainMode(){return ["Original Image","AI Attention / Heatmap","SHAP","Grad-CAM"][state.explainStep]}
 function explainImg(){
  const r=state.result;
- if(state.explainStep==1)return (r?.image?`<img src="${r.image}">`:"")+"<div class='explain-overlay heatmap'></div>";
- if(state.explainStep==2)return (r?.image?`<img src="${r.image}">`:"")+"<div class='explain-overlay shap'></div>";
- if(state.explainStep==3)return (r?.image?`<img src="${r.image}">`:"")+"<div class='explain-overlay gradcam'></div>";
+ if(state.explainStep==1)return r?.heatmapImg?`<img src="${r.heatmapImg}">`:(r?.image?`<img src="${r.image}">`:"")+"<div class='explain-overlay heatmap'></div>";
+ if(state.explainStep==2)return r?.shapImg?`<img src="${r.shapImg}">`:(r?.image?`<img src="${r.image}">`:"")+"<div class='explain-overlay shap'></div>";
+ if(state.explainStep==3)return r?.gradcamImg?`<img src="${r.gradcamImg}">`:(r?.image?`<img src="${r.image}">`:"")+"<div class='explain-overlay gradcam'></div>";
  return r?.image?`<img src="${r.image}">`:"";
 }
 function advanceExplain(){if(state.explainStep<3){state.explainStep++;renderExplain()}}
@@ -207,9 +154,9 @@ function renderExplain(){
  const r=state.result, mode=explainMode();
  const cardImgs=[
    r.image?`<img src="${r.image}">`:"",
-   (r.image?`<img src="${r.image}">`:"")+"<div class='explain-overlay heatmap'></div>",
-   (r.image?`<img src="${r.image}">`:"")+"<div class='explain-overlay shap'></div>",
-   (r.image?`<img src="${r.image}">`:"")+"<div class='explain-overlay gradcam'></div>"
+   r.heatmapImg?`<img src="${r.heatmapImg}">`:(r.image?`<img src="${r.image}">`:"")+"<div class='explain-overlay heatmap'></div>",
+   r.shapImg?`<img src="${r.shapImg}">`:(r.image?`<img src="${r.image}">`:"")+"<div class='explain-overlay shap'></div>",
+   r.gradcamImg?`<img src="${r.gradcamImg}">`:(r.image?`<img src="${r.image}">`:"")+"<div class='explain-overlay gradcam'></div>"
  ];
  const copy=[
    "Original retinal photograph used for this screening.",
