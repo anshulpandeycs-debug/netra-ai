@@ -1,12 +1,12 @@
 import streamlit as st
 import streamlit.components.v1 as components
 import keras
-import tensorflow as tf
 import numpy as np
 import cv2
 import base64
 import io
 import os
+import json
 from PIL import Image
 
 st.set_page_config(
@@ -15,7 +15,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Clean full-bleed UI styling
+# Hide Streamlit Chrome
 st.markdown("""
     <style>
         #MainMenu {visibility: hidden;}
@@ -73,7 +73,7 @@ def run_model_inference(img, model):
         pred_class = int(np.argmax(preds[0]))
         confidence = float(preds[0][pred_class])
     else:
-        # Fallback if model binary is not present in repo root
+        # Fallback if model binary is missing
         pred_class = 1
         confidence = 0.9142
 
@@ -94,7 +94,6 @@ def run_model_inference(img, model):
 
 GRADE_LABELS = ["No DR", "Mild DR", "Moderate DR", "Severe DR", "Proliferative DR"]
 
-# Streamlit Native File Uploader for Model Inference
 uploaded_file = st.file_uploader("Upload Retinal Fundus Image for AI Model Inference", type=["png", "jpg", "jpeg"])
 
 prediction_json = None
@@ -116,22 +115,25 @@ if os.path.exists("index.html"):
         html_code = f.read()
 
     if prediction_json:
+        # Safely encode JSON to prevent string escaping errors in JS
+        json_str = json.dumps(prediction_json)
         injection = f"""
         <script>
             window.addEventListener('DOMContentLoaded', () => {{
-                state.file = "{prediction_json['image']}";
+                const data = {json_str};
+                state.file = data.image;
                 state.result = {{
                     id: "NETRA-" + Date.now().toString().slice(-6),
                     date: new Date().toLocaleDateString("en-IN", {{day: "2-digit", month: "short", year: "numeric"}}),
-                    grade: {prediction_json['grade']},
-                    gradeLabel: "{prediction_json['gradeLabel']}",
-                    prediction: "{prediction_json['gradeLabel']}",
-                    confidence: {prediction_json['confidence']},
+                    grade: data.grade,
+                    gradeLabel: data.gradeLabel,
+                    prediction: data.gradeLabel,
+                    confidence: data.confidence,
                     quality: "Good",
-                    image: "{prediction_json['image']}",
-                    heatmapImg: "{prediction_json['gradcam']}",
-                    gradcamImg: "{prediction_json['gradcam']}",
-                    shapImg: "{prediction_json['gradcam']}",
+                    image: data.image,
+                    heatmapImg: data.gradcam,
+                    gradcamImg: data.gradcam,
+                    shapImg: data.gradcam,
                     explanationText: "Diabetic Retinopathy screening completed successfully.",
                     edge: null,
                     benchmark: null
@@ -139,7 +141,7 @@ if os.path.exists("index.html"):
                 state.explainStep = 0;
                 state.history.unshift(state.result);
                 go("processing");
-                setTimeout(() => {{ go("result"); }}, 2200);
+                setTimeout(() => {{ go("result"); }}, 2000);
             }});
         </script>
         </body>
