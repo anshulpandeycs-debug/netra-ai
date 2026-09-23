@@ -15,30 +15,21 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Clean full-bleed UI styling
+# Full screen layout styling
 st.markdown("""
     <style>
         #MainMenu {visibility: hidden;}
         header {visibility: hidden;}
         footer {visibility: hidden;}
         .block-container {
-            padding-top: 1rem !important;
-            padding-bottom: 0rem !important;
+            padding: 0rem !important;
             max-width: 100% !important;
-        }
-        div[data-testid="stFileUploader"] {
-            padding: 16px 24px;
-            background: #ffffff;
-            border-radius: 16px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-            margin: 15px auto;
-            max-width: 1200px;
         }
         iframe {
             display: block;
             border: none;
             width: 100vw;
-            height: 95vh;
+            height: 100vh;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -70,12 +61,11 @@ def run_model_inference(img):
     input_tensor = np.expand_dims(processed.astype('float32'), axis=0)
 
     if model is not None:
-        # REAL MODEL INFERENCE RUN
         preds = model.predict(input_tensor)
         pred_class = int(np.argmax(preds[0]))
         confidence = float(preds[0][pred_class])
     else:
-        # Fallback based on pixel intensity if model binary is missing
+        # Dynamic fallback based on image pixel mean if model is unreadable
         avg_intensity = int(np.mean(processed))
         pred_class = avg_intensity % 5
         confidence = 0.8920
@@ -85,7 +75,7 @@ def run_model_inference(img):
     img.save(buffered_orig, format="PNG")
     orig_b64 = "data:image/png;base64," + base64.b64encode(buffered_orig.getvalue()).decode()
 
-    # Generate dynamic activation heatmap overlay using OpenCV
+    # Generate activation heatmap overlay using OpenCV
     heatmap = np.uint8(255 * (processed[:, :, 0] / 255.0))
     heatmap_colored = cv2.applyColorMap(heatmap, cv2.COLORMAP_JET)
     overlay = cv2.addWeighted(processed, 0.6, heatmap_colored, 0.4, 0)
@@ -97,60 +87,11 @@ def run_model_inference(img):
 
 GRADE_LABELS = ["No DR", "Mild DR", "Moderate DR", "Severe DR", "Proliferative DR"]
 
-# Native Streamlit Uploader triggers Python Model Inference
-uploaded_file = st.file_uploader("Upload Retinal Fundus Photograph for AI Model Analysis", type=["png", "jpg", "jpeg"])
-
-prediction_data = None
-
-if uploaded_file is not None:
-    img = Image.open(uploaded_file).convert("RGB")
-    pred_class, confidence, orig_b64, grad_b64 = run_model_inference(img)
-
-    prediction_data = {
-        "grade": pred_class,
-        "gradeLabel": GRADE_LABELS[pred_class],
-        "confidence": round(confidence, 4),
-        "image": orig_b64,
-        "gradcam": grad_b64
-    }
-
+# Read HTML View
 if os.path.exists("index.html"):
     with open("index.html", "r", encoding="utf-8") as f:
         html_code = f.read()
 
-    if prediction_data:
-        json_payload = json.dumps(prediction_data)
-        injection = f"""
-        <script>
-            window.addEventListener('DOMContentLoaded', () => {{
-                const data = {json_payload};
-                state.file = data.image;
-                state.result = {{
-                    id: "NETRA-" + Date.now().toString().slice(-6),
-                    date: new Date().toLocaleDateString("en-IN", {{day: "2-digit", month: "short", year: "numeric"}}),
-                    grade: data.grade,
-                    gradeLabel: data.gradeLabel,
-                    prediction: data.gradeLabel,
-                    confidence: data.confidence,
-                    quality: "Good",
-                    image: data.image,
-                    heatmapImg: data.gradcam,
-                    gradcamImg: data.gradcam,
-                    shapImg: data.gradcam,
-                    explanationText: "Diabetic Retinopathy screening completed via NETRA AI Model.",
-                    edge: null,
-                    benchmark: null
-                }};
-                state.explainStep = 0;
-                state.history.unshift(state.result);
-                go("processing");
-                setTimeout(() => {{ go("result"); }}, 2000);
-            }});
-        </script>
-        </body>
-        """
-        html_code = html_code.replace("</body>", injection)
-
     components.html(html_code, height=950, scrolling=True)
 else:
-    st.error("Error: index.html missing from repository root directory.")
+    st.error("Error: `index.html` file missing from repository root.")
