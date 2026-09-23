@@ -108,9 +108,11 @@ function renderDashboard(){
 }
 
 function renderScreening(){
- $("screening").innerHTML=`<div class="upload"><span class="pill">NEW SCREENING</span><h1>Upload Retinal Image</h1><p style="color:var(--muted)">Use the Streamlit file uploader at the top of the page to choose an image for analysis.</p>
- <div class="drop" id="drop"><div style="font-size:38px;color:var(--teal)">⇧</div><h2>Use the top file picker to upload</h2><p style="font-size:12px;color:#7a8a8a">Supported formats: JPG / PNG</p></div>
+ $("screening").innerHTML=`<div class="upload"><span class="pill">NEW SCREENING</span><h1>Upload Retinal Image</h1><p style="color:var(--muted)">Upload a clear fundus photograph for AI-assisted diabetic retinopathy screening.</p>
+ <div class="drop ${state.file?"has":""}" id="drop">${state.file?`<div class="preview"><img src="${state.file}"><div><small style="color:var(--muted)">Selected image</small><h3>${state.name}</h3><div class="step"><strong style="color:var(--teal)">✓ IMAGE QUALITY · Good</strong><span>Demo quality gate — suitable to proceed.</span></div><div class="actions"><button class="btn primary" onclick="analyze()">Analyse Image</button><button class="btn secondary" onclick="clearFile()">↻</button></div></div></div>`:`<div style="font-size:38px;color:var(--teal)">⇧</div><h2>Drag & drop your retinal image here</h2><p style="color:var(--muted)">or</p><button class="btn primary" onclick="fileInput.click()">Browse Image</button><input id="fileInput" type="file" accept="image/jpeg,image/png" hidden><p style="font-size:12px;color:#7a8a8a">Supported formats: JPG / PNG</p>`}</div>
  <div class="grid" style="grid-template-columns:repeat(3,1fr);margin-top:12px">${["✓ Clear retinal/fundus image","✓ JPG or PNG","✓ Suitable resolution"].map(x=>`<div class="card" style="padding:14px;font-size:12px">${x}</div>`).join("")}</div></div>`;
+ const d=$("drop");d.ondragover=e=>{e.preventDefault();d.classList.add("drag")};d.ondragleave=()=>d.classList.remove("drag");d.ondrop=e=>{e.preventDefault();d.classList.remove("drag");loadFile(e.dataTransfer.files[0])};
+ const fi=$("fileInput");if(fi)fi.onchange=e=>loadFile(e.target.files[0]);
 }
 
 function renderProcessing(){
