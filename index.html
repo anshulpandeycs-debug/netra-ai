@@ -135,7 +135,7 @@ function heatHTML(){
 }
 
 function renderResult(){
- if(!state.result){$("result").innerHTML="";return}
+ if(!state.result){$("result").innerHTML=`<div class="card" style="text-align:center;padding:40px"><h2>No screening active</h2><p style="color:var(--muted)">Please upload a retinal image using the top uploader to run AI analysis.</p><button class="btn primary" onclick="go('screening')">Go to Upload</button></div>`;return}
  const r=state.result;
  $("result").innerHTML=`<div><span class="pill">AI-ASSISTED SCREENING</span><div style="display:flex;justify-content:space-between;gap:12px;align-items:end"><h1>Screening Result</h1></div><div class="grid resultgrid"><div class="card">${heatHTML()}</div><div class="card"><small style="color:#6c7c7c">AI ASSESSMENT</small><h2 style="font-size:30px">${r.gradeLabel}</h2><div class="kpis">${[["DR Grade",`Grade ${r.grade} / 4`],["Image Quality",r.quality],["Screening ID",r.id]].map(x=>`<div class="kpi"><small>${x[0]}</small><b>${x[1]}</b></div>`).join("")}</div><hr style="border:0;border-top:1px solid var(--line);margin:22px 0"><h3>What does this mean?</h3><p style="color:var(--muted);line-height:1.7">The prototype has assigned <b>DR Grade ${r.grade} (${r.gradeLabel})</b> based on its screening workflow. The grade is an AI-assisted output and should be reviewed by a qualified healthcare professional.</p><button class="btn primary" style="width:100%;margin-top:10px" onclick="go('explain')">View AI Explanation →</button></div></div>
  <div class="notice">🛡 AI-assisted screening — clinical evaluation should be performed by a qualified healthcare professional.</div></div>`;
@@ -173,7 +173,7 @@ function renderExplain(){
    2:{cause:"Moderate NPDR can be associated with increasing microaneurysms, hemorrhages and/or hard exudates.", prevention:"Maintain careful metabolic control and attend closer retinal follow-up.", treatment:"Management depends on clinical findings and may include closer surveillance or treatment if sight-threatening changes are present."},
    3:{cause:"Severe NPDR can involve extensive hemorrhages, venous beading and retinal ischemic changes.", prevention:"Prompt specialist follow-up and careful control of diabetes and blood pressure are important.", treatment:"An ophthalmologist may consider treatment such as laser therapy depending on examination findings."},
    4:{cause:"PDR is associated with abnormal new blood-vessel growth and can seriously threaten vision.", prevention:"Do not delay specialist evaluation and maintain careful metabolic control.", treatment:"Depending on examination findings, treatment may include anti-VEGF therapy, laser photocoagulation or other retinal procedures."}
- }[r.grade];
+ }[r.grade || 0];
 
  $("explain").innerHTML=`
  <button class="btn secondary" onclick="go('result')">← Back to result</button>
