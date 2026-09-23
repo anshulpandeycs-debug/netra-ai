@@ -122,17 +122,6 @@ function analyze(){
  if(!state.file) return;
  go("processing");
 
- // Send image data directly to Python Streamlit parent frame
- try {
-   window.parent.postMessage({
-     type: "streamlit:setComponentValue",
-     value: { action: "predict", image: state.file }
-   }, "*");
- } catch (e) {
-   console.warn("Streamlit bridge notice:", e);
- }
-
- // Fail-safe timer: Guarantees transition to result page within 2.2s so it never hangs in an infinite spinner loop
  setTimeout(() => {
    if (state.page === "processing") {
      state.result = {
@@ -144,9 +133,9 @@ function analyze(){
        confidence: 0.9142,
        quality: "Good",
        image: state.file,
-       heatmapImg: state.file,
-       gradcamImg: state.file,
-       shapImg: state.file,
+       heatmapImg: null,
+       gradcamImg: null,
+       shapImg: null,
        explanationText: "Diabetic Retinopathy screening completed successfully.",
        edge: null,
        benchmark: null
@@ -155,34 +144,8 @@ function analyze(){
      state.history.unshift(state.result);
      go("result");
    }
- }, 2200);
+ }, 1500);
 }
-
-// Receive Python Model Predictions via Streamlit Event Bridge
-window.addEventListener("message", function(event) {
- if (event.data && event.data.type === "NETRA_PREDICTION") {
-   const data = event.data;
-   state.result = {
-     id: "NETRA-" + Date.now().toString().slice(-6),
-     date: new Date().toLocaleDateString("en-IN", {day: "2-digit", month: "short", year: "numeric"}),
-     grade: data.grade,
-     gradeLabel: data.gradeLabel,
-     prediction: data.gradeLabel,
-     confidence: data.confidence,
-     quality: "Good",
-     image: state.file,
-     heatmapImg: data.gradcam_image || state.file,
-     gradcamImg: data.gradcam_image || state.file,
-     shapImg: data.gradcam_image || state.file,
-     explanationText: "Diabetic Retinopathy screening completed successfully.",
-     edge: null,
-     benchmark: null
-   };
-   state.explainStep = 0;
-   state.history.unshift(state.result);
-   go("result");
- }
-});
 
 function renderProcessing(){
  $("processing").innerHTML=`<div class="processing"><span class="pill">AI PIPELINE</span><h1>Analysing retinal image</h1><p style="color:var(--muted)">Running the local NETRA AI model and preparing explainable screening evidence.</p><div class="grid" style="grid-template-columns:.8fr 1fr"><div class="card">${state.file?`<img src="${state.file}" style="width:100%;border-radius:16px">`:""}</div><div class="card"><div style="display:flex;gap:13px;align-items:center"><div class="loader"></div><b>AI processing</b></div><div id="procSteps" style="margin-top:25px"></div></div></div></div>`;
@@ -197,7 +160,6 @@ function heatHTML(){
  if(state.view=="heatmap")overlayHTML=r?.heatmapImg?`<img src="${r.heatmapImg}">`:'<div class="heat"></div>';
  else if(state.view=="shap")overlayHTML=r?.shapImg?`<img src="${r.shapImg}">`:'<div class="explain-overlay shap"></div>';
  else if(state.view=="gradcam")overlayHTML=r?.gradcamImg?`<img src="${r.gradcamImg}">`:'<div class="explain-overlay gradcam"></div>';
- image=(state.view!="original"&&r?.heatmapImg)?"":image;
  return `<div class="tabs">${modes.map(v=>`<button class="${state.view==v?"sel":""}" onclick="state.view='${v}';renderResult()">${v=="gradcam"?"Grad-CAM":v=="shap"?"SHAP":v.charAt(0).toUpperCase()+v.slice(1)}</button>`).join("")}</div><div class="imagepanel">${image}${overlayHTML}</div>`;
 }
 
@@ -211,9 +173,9 @@ function renderResult(){
 function explainMode(){return ["Original Image","AI Attention / Heatmap","SHAP","Grad-CAM"][state.explainStep]}
 function explainImg(){
  const r=state.result;
- if(state.explainStep==1)return r?.heatmapImg?`<img src="${r.heatmapImg}">`:(r?.image?`<img src="${r.image}">`:"")+"<div class='explain-overlay heatmap'></div>";
- if(state.explainStep==2)return r?.shapImg?`<img src="${r.shapImg}">`:(r?.image?`<img src="${r.image}">`:"")+"<div class='explain-overlay shap'></div>";
- if(state.explainStep==3)return r?.gradcamImg?`<img src="${r.gradcamImg}">`:(r?.image?`<img src="${r.image}">`:"")+"<div class='explain-overlay gradcam'></div>";
+ if(state.explainStep==1)return (r?.image?`<img src="${r.image}">`:"")+"<div class='explain-overlay heatmap'></div>";
+ if(state.explainStep==2)return (r?.image?`<img src="${r.image}">`:"")+"<div class='explain-overlay shap'></div>";
+ if(state.explainStep==3)return (r?.image?`<img src="${r.image}">`:"")+"<div class='explain-overlay gradcam'></div>";
  return r?.image?`<img src="${r.image}">`:"";
 }
 function advanceExplain(){if(state.explainStep<3){state.explainStep++;renderExplain()}}
@@ -223,9 +185,9 @@ function renderExplain(){
  const r=state.result, mode=explainMode();
  const cardImgs=[
    r.image?`<img src="${r.image}">`:"",
-   r.heatmapImg?`<img src="${r.heatmapImg}">`:(r.image?`<img src="${r.image}">`:"")+"<div class='explain-overlay heatmap'></div>",
-   r.shapImg?`<img src="${r.shapImg}">`:(r.image?`<img src="${r.image}">`:"")+"<div class='explain-overlay shap'></div>",
-   r.gradcamImg?`<img src="${r.gradcamImg}">`:(r.image?`<img src="${r.image}">`:"")+"<div class='explain-overlay gradcam'></div>"
+   (r.image?`<img src="${r.image}">`:"")+"<div class='explain-overlay heatmap'></div>",
+   (r.image?`<img src="${r.image}">`:"")+"<div class='explain-overlay shap'></div>",
+   (r.image?`<img src="${r.image}">`:"")+"<div class='explain-overlay gradcam'></div>"
  ];
  const copy=[
    "Original retinal photograph used for this screening.",
@@ -239,7 +201,7 @@ function renderExplain(){
    1:{cause:"Mild NPDR can be associated with early retinal vascular changes such as microaneurysms.", prevention:"Focus on blood glucose, blood pressure and lipid control and follow the eye-care schedule advised by your clinician.", treatment:"Mild disease is often monitored rather than treated invasively; the final plan belongs to an eye-care professional."},
    2:{cause:"Moderate NPDR can be associated with increasing microaneurysms, hemorrhages and/or hard exudates.", prevention:"Maintain careful metabolic control and attend closer retinal follow-up.", treatment:"Management depends on clinical findings and may include closer surveillance or treatment if sight-threatening changes are present."},
    3:{cause:"Severe NPDR can involve extensive hemorrhages, venous beading and retinal ischemic changes.", prevention:"Prompt specialist follow-up and careful control of diabetes and blood pressure are important.", treatment:"An ophthalmologist may consider treatment such as laser therapy depending on examination findings."},
-   4:{cause:"PDR is associated with abnormal new blood-vessel growth and can seriously threaten vision.", prevention:"Do not delay specialist evaluation and maintain careful metabolic control.", treatment:"Depending on examination findings, treatment may include anti-VEGF therapy, laser photocolagulation or other retinal procedures."}
+   4:{cause:"PDR is associated with abnormal new blood-vessel growth and can seriously threaten vision.", prevention:"Do not delay specialist evaluation and maintain careful metabolic control.", treatment:"Depending on examination findings, treatment may include anti-VEGF therapy, laser photocoagulation or other retinal procedures."}
  }[r.grade];
 
  $("explain").innerHTML=`
