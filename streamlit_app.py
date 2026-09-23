@@ -6,16 +6,16 @@ import cv2
 import base64
 import io
 import os
+import json
 from PIL import Image
 
-# Page Configuration
 st.set_page_config(
     page_title="NETRA AI - Explainable DR Screening",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
 
-# Remove default Streamlit padding and headers
+# Remove all default Streamlit padding, header, and footer
 st.markdown("""
     <style>
         #MainMenu {visibility: hidden;}
@@ -34,15 +34,13 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Cache and Load Keras Model
 @st.cache_resource
 def load_netra_model():
-    return keras.models.load_model("netraai_final.keras")
+    if os.path.exists("netraai_final.keras"):
+        return keras.models.load_model("netraai_final.keras")
+    return None
 
-try:
-    model = load_netra_model()
-except Exception:
-    model = None
+model = load_netra_model()
 
 def preprocess_image(img_array, size=224):
     img = cv2.resize(img_array, (size, size))
@@ -55,7 +53,7 @@ def preprocess_image(img_array, size=224):
 
 def make_gradcam_heatmap(img_array, model, last_conv_layer_name='top_conv', pred_index=None):
     if model is None:
-        return np.zeros((224, 224)), 0, 0.95
+        return np.zeros((224, 224)), 1, 0.92
     import tensorflow as tf
     grad_model = keras.models.Model(
         [model.inputs], [model.get_layer(last_conv_layer_name).output, model.output]
@@ -77,42 +75,13 @@ def make_gradcam_heatmap(img_array, model, last_conv_layer_name='top_conv', pred
 
 GRADE_LABELS = ["No DR", "Mild DR", "Moderate DR", "Severe DR", "Proliferative DR"]
 
-# Read and Embed index.html safely
+# Read index.html
 if os.path.exists("index.html"):
     with open("index.html", "r", encoding="utf-8") as f:
         html_code = f.read()
-
-    component_value = components.html(html_code, height=1000, scrolling=True)
-
-    # Process prediction request sent from JavaScript
-    if component_value and isinstance(component_value, dict):
-        if component_value.get("action") == "predict":
-            image_b64 = component_value.get("image", "").split(",")[-1]
-            img_bytes = base64.b64decode(image_b64)
-            img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
-            img_array = np.array(img)
-
-            processed = preprocess_image(img_array, size=224)
-            input_array = np.expand_dims(processed.astype('float32'), axis=0)
-            heatmap, pred_class, confidence = make_gradcam_heatmap(input_array, model)
-
-            heatmap_resized = cv2.resize(heatmap, (224, 224))
-            heatmap_colored = cv2.applyColorMap(np.uint8(255 * heatmap_resized), cv2.COLORMAP_JET)
-            overlay = cv2.addWeighted(cv2.cvtColor(processed.astype('uint8'), cv2.COLOR_RGB2BGR), 0.6, heatmap_colored, 0.4, 0)
-
-            _, buffer = cv2.imencode('.png', cv2.cvtColor(overlay, cv2.COLOR_BGR2RGB))
-            overlay_b64 = "data:image/png;base64," + base64.b64encode(buffer).decode()
-
-            st.components.v1.html(f"""
-                <script>
-                    window.parent.postMessage({{
-                        type: "NETRA_PREDICTION",
-                        grade: {pred_class},
-                        gradeLabel: "{GRADE_LABELS[pred_class]}",
-                        confidence: {confidence:.4f},
-                        gradcam_image: "{overlay_b64}"
-                    }}, "*");
-                </script>
-            """, height=0)
 else:
-    st.error("Error: `index.html` not found in the root directory.")
+    st.error("index.html file missing from repository root.")
+    st.stop()
+
+# Embed the HTML view
+components.html(html_code, height=1000, scrolling=True)
