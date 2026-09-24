@@ -4,9 +4,10 @@ import numpy as np
 import cv2
 from PIL import Image
 
-# =========================================================
+
+# ============================================================
 # PAGE CONFIG
-# =========================================================
+# ============================================================
 
 st.set_page_config(
     page_title="NetraAI — DR Screening",
@@ -15,184 +16,505 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# =========================================================
-# LIGHT UI STYLING
-# =========================================================
 
-st.markdown("""
+# ============================================================
+# LIGHT THEME + UI CSS
+# ============================================================
+
+st.markdown(
+    """
 <style>
 
-    /* Main background */
-    .stApp {
-        background-color: #f7f9fc;
-    }
+/* =========================================================
+   GLOBAL
+   ========================================================= */
 
-    /* Main content */
-    .main .block-container {
-        padding-top: 2rem;
-        padding-bottom: 3rem;
-        max-width: 1250px;
-    }
+.stApp {
+    background-color: #f7f9fc !important;
+}
 
-    /* Sidebar */
-    section[data-testid="stSidebar"] {
-        background-color: #ffffff;
-        border-right: 1px solid #e5e7eb;
-    }
+.main .block-container {
+    max-width: 1250px;
+    padding-top: 2rem;
+    padding-bottom: 3rem;
+}
 
-    /* Header */
-    .netra-header {
-        background: linear-gradient(135deg, #ffffff, #eef6ff);
-        padding: 25px 30px;
-        border-radius: 16px;
-        border: 1px solid #dce7f5;
-        margin-bottom: 25px;
-    }
+/* Remove Streamlit decoration */
+[data-testid="stDecoration"] {
+    display: none;
+}
 
-    .netra-title {
-        font-size: 32px;
-        font-weight: 700;
-        color: #123b68;
-        margin-bottom: 5px;
-    }
+/* Header */
+header[data-testid="stHeader"] {
+    background-color: #ffffff !important;
+}
 
-    .netra-subtitle {
-        font-size: 15px;
-        color: #64748b;
-    }
+/* Toolbar */
+[data-testid="stToolbar"] {
+    background-color: #ffffff !important;
+}
 
-    /* Cards */
-    .card {
-        background: white;
-        padding: 20px;
-        border-radius: 14px;
-        border: 1px solid #e2e8f0;
-        box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
-        margin-bottom: 18px;
-    }
+/* General text */
+.stApp p,
+.stApp label {
+    color: #1e293b;
+}
 
-    .card-title {
-        font-size: 17px;
-        font-weight: 650;
-        color: #1e3a5f;
-        margin-bottom: 10px;
-    }
 
-    /* Result card */
-    .result-card {
-        background: white;
-        border-radius: 16px;
-        border: 1px solid #dce7f5;
-        padding: 24px;
-        margin-top: 20px;
-    }
+/* =========================================================
+   SIDEBAR
+   ========================================================= */
 
-    .prediction-label {
-        color: #64748b;
-        font-size: 14px;
-        margin-bottom: 5px;
-    }
+section[data-testid="stSidebar"] {
+    background-color: #ffffff !important;
+    border-right: 1px solid #e2e8f0;
+}
 
-    .prediction-value {
-        font-size: 30px;
-        font-weight: 750;
-        color: #123b68;
-    }
+section[data-testid="stSidebar"] * {
+    color: #1e293b !important;
+}
 
-    .grade-badge {
-        display: inline-block;
-        padding: 6px 13px;
-        border-radius: 20px;
-        background: #eaf3ff;
-        color: #1769aa;
-        font-weight: 600;
-        font-size: 13px;
-    }
+.sidebar-brand {
+    font-size: 25px;
+    font-weight: 750;
+    color: #123b68 !important;
+    margin-bottom: 4px;
+}
 
-    /* Metrics */
-    .metric-box {
-        background: white;
-        border: 1px solid #e2e8f0;
-        border-radius: 12px;
-        padding: 17px;
-        text-align: center;
-    }
+.sidebar-subtitle {
+    font-size: 13px;
+    color: #64748b !important;
+    line-height: 1.5;
+}
 
-    .metric-number {
-        font-size: 23px;
-        font-weight: 700;
-        color: #123b68;
-    }
+.sidebar-heading {
+    font-size: 14px;
+    font-weight: 700;
+    color: #123b68 !important;
+    margin-top: 20px;
+    margin-bottom: 8px;
+}
 
-    .metric-label {
-        color: #64748b;
-        font-size: 13px;
-    }
+.sidebar-item {
+    font-size: 13px;
+    color: #475569 !important;
+    margin-bottom: 8px;
+}
 
-    /* Section title */
-    .section-title {
-        color: #123b68;
-        font-size: 21px;
-        font-weight: 700;
-        margin-top: 28px;
-        margin-bottom: 14px;
-    }
 
-    /* Footer */
-    .footer {
-        text-align: center;
-        color: #94a3b8;
-        font-size: 12px;
-        padding-top: 25px;
-    }
+/* =========================================================
+   MAIN HEADER
+   ========================================================= */
 
-    /* Upload area */
-    [data-testid="stFileUploader"] {
-        background-color: #ffffff;
-        border-radius: 14px;
-    }
+.netra-header {
+    background: linear-gradient(
+        135deg,
+        #ffffff 0%,
+        #eef6ff 100%
+    );
 
-    /* Buttons */
-    .stButton > button {
-        width: 100%;
-        border-radius: 9px;
-        border: none;
-        background-color: #1769aa;
-        color: white;
-        font-weight: 600;
-        padding: 0.65rem 1rem;
-    }
+    border: 1px solid #dbe7f5;
 
-    .stButton > button:hover {
-        background-color: #12588f;
-        color: white;
-    }
+    border-radius: 16px;
+
+    padding: 26px 30px;
+
+    margin-bottom: 28px;
+
+    box-shadow:
+        0 3px 12px rgba(15, 23, 42, 0.04);
+}
+
+.netra-title {
+    font-size: 32px;
+    font-weight: 750;
+    color: #123b68 !important;
+    margin: 0;
+}
+
+.netra-subtitle {
+    font-size: 15px;
+    color: #64748b !important;
+    margin-top: 6px;
+}
+
+
+/* =========================================================
+   SECTION TITLE
+   ========================================================= */
+
+.section-title {
+    font-size: 21px;
+    font-weight: 700;
+    color: #123b68 !important;
+
+    margin-top: 25px;
+    margin-bottom: 12px;
+}
+
+
+/* =========================================================
+   GENERAL CARD
+   ========================================================= */
+
+.netra-card {
+    background-color: #ffffff;
+
+    border: 1px solid #e2e8f0;
+
+    border-radius: 14px;
+
+    padding: 20px;
+
+    box-shadow:
+        0 2px 8px rgba(15, 23, 42, 0.04);
+
+    margin-bottom: 18px;
+}
+
+.card-heading {
+    font-size: 17px;
+    font-weight: 700;
+    color: #1e3a5f !important;
+
+    margin-bottom: 8px;
+}
+
+
+/* =========================================================
+   UPLOAD AREA
+   ========================================================= */
+
+[data-testid="stFileUploader"] {
+    background-color: #ffffff !important;
+
+    border: 1px solid #dbe4ef;
+
+    border-radius: 14px;
+
+    padding: 8px;
+}
+
+[data-testid="stFileUploader"] * {
+    color: #1e293b !important;
+}
+
+
+/* =========================================================
+   BUTTON
+   ========================================================= */
+
+.stButton > button {
+    width: 100%;
+
+    background-color: #1769aa !important;
+
+    color: #ffffff !important;
+
+    border: none !important;
+
+    border-radius: 9px;
+
+    padding: 0.65rem 1rem;
+
+    font-size: 15px;
+
+    font-weight: 650;
+
+    transition: 0.2s;
+}
+
+.stButton > button:hover {
+    background-color: #12588f !important;
+
+    color: #ffffff !important;
+}
+
+
+/* =========================================================
+   METRIC CARDS
+   ========================================================= */
+
+.metric-box {
+    background-color: #ffffff;
+
+    border: 1px solid #e2e8f0;
+
+    border-radius: 13px;
+
+    padding: 18px;
+
+    text-align: center;
+
+    min-height: 105px;
+
+    box-shadow:
+        0 2px 7px rgba(15, 23, 42, 0.03);
+}
+
+.metric-label {
+    font-size: 13px;
+
+    color: #64748b !important;
+
+    margin-bottom: 7px;
+}
+
+.metric-value {
+    font-size: 23px;
+
+    font-weight: 750;
+
+    color: #123b68 !important;
+}
+
+
+/* =========================================================
+   RESULT CARD
+   ========================================================= */
+
+.result-card {
+    background-color: #ffffff;
+
+    border: 1px solid #dbe7f5;
+
+    border-radius: 15px;
+
+    padding: 24px;
+
+    margin-top: 10px;
+
+    box-shadow:
+        0 2px 8px rgba(15, 23, 42, 0.04);
+}
+
+.prediction-label {
+    font-size: 13px;
+
+    font-weight: 600;
+
+    color: #64748b !important;
+
+    text-transform: uppercase;
+
+    letter-spacing: 0.5px;
+}
+
+.prediction-value {
+    font-size: 30px;
+
+    font-weight: 750;
+
+    color: #123b68 !important;
+
+    margin-top: 4px;
+}
+
+.grade-badge {
+    display: inline-block;
+
+    background-color: #eaf3ff;
+
+    color: #1769aa !important;
+
+    border-radius: 20px;
+
+    padding: 6px 13px;
+
+    font-size: 13px;
+
+    font-weight: 650;
+
+    margin-top: 8px;
+}
+
+
+/* =========================================================
+   IMAGE CARDS
+   ========================================================= */
+
+.image-card-title {
+    font-size: 14px;
+
+    font-weight: 650;
+
+    color: #334155 !important;
+
+    margin-bottom: 7px;
+}
+
+
+/* =========================================================
+   EMPTY STATE
+   ========================================================= */
+
+.empty-state {
+    background-color: #ffffff;
+
+    border: 1px solid #e2e8f0;
+
+    border-radius: 16px;
+
+    padding: 48px 30px;
+
+    text-align: center;
+
+    margin-top: 20px;
+
+    box-shadow:
+        0 2px 8px rgba(15, 23, 42, 0.03);
+}
+
+.empty-icon {
+    font-size: 48px;
+
+    margin-bottom: 10px;
+}
+
+.empty-title {
+    font-size: 21px;
+
+    font-weight: 700;
+
+    color: #123b68 !important;
+
+    margin-bottom: 7px;
+}
+
+.empty-text {
+    font-size: 14px;
+
+    color: #64748b !important;
+}
+
+
+/* =========================================================
+   INFO STRIP
+   ========================================================= */
+
+.info-strip {
+    background-color: #eef6ff;
+
+    border: 1px solid #d7e8fa;
+
+    border-radius: 10px;
+
+    padding: 13px 16px;
+
+    color: #24547d !important;
+
+    font-size: 13px;
+
+    margin-top: 15px;
+}
+
+
+/* =========================================================
+   FOOTER
+   ========================================================= */
+
+.netra-footer {
+    text-align: center;
+
+    color: #94a3b8 !important;
+
+    font-size: 12px;
+
+    padding-top: 30px;
+
+    padding-bottom: 10px;
+}
+
+
+/* =========================================================
+   TABS
+   ========================================================= */
+
+button[data-baseweb="tab"] {
+    color: #475569 !important;
+
+    font-weight: 600;
+}
+
+button[data-baseweb="tab"][aria-selected="true"] {
+    color: #1769aa !important;
+}
+
+
+/* =========================================================
+   EXPANDER
+   ========================================================= */
+
+[data-testid="stExpander"] {
+    background-color: #ffffff !important;
+
+    border: 1px solid #e2e8f0 !important;
+
+    border-radius: 12px !important;
+}
+
+[data-testid="stExpander"] * {
+    color: #1e293b;
+}
+
+
+/* =========================================================
+   PROGRESS BAR
+   ========================================================= */
+
+[data-testid="stProgress"] > div {
+    background-color: #e2e8f0;
+}
+
+[data-testid="stProgress"] > div > div {
+    background-color: #1769aa;
+}
+
+
+/* =========================================================
+   ALERT BOX TEXT
+   ========================================================= */
+
+[data-testid="stAlert"] {
+    border-radius: 10px;
+}
 
 </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True
+)
 
 
-# =========================================================
-# MODEL
-# =========================================================
+# ============================================================
+# LOAD MODEL
+# ============================================================
 
 @st.cache_resource
 def load_netra_model():
-    return tf.keras.models.load_model("netraai_final.keras")
+
+    return tf.keras.models.load_model(
+        "netraai_final.keras"
+    )
 
 
 model = load_netra_model()
 
 
-# =========================================================
+# ============================================================
 # PREPROCESSING
-# =========================================================
+# ============================================================
 
 def preprocess_image(img_array, size=224):
 
-    img = cv2.resize(img_array, (size, size))
+    img = cv2.resize(
+        img_array,
+        (size, size)
+    )
 
-    lab = cv2.cvtColor(img, cv2.COLOR_RGB2LAB)
+    lab = cv2.cvtColor(
+        img,
+        cv2.COLOR_RGB2LAB
+    )
 
     l, a, b = cv2.split(lab)
 
@@ -203,7 +525,9 @@ def preprocess_image(img_array, size=224):
 
     l = clahe.apply(l)
 
-    lab = cv2.merge((l, a, b))
+    lab = cv2.merge(
+        (l, a, b)
+    )
 
     return cv2.cvtColor(
         lab,
@@ -211,9 +535,9 @@ def preprocess_image(img_array, size=224):
     )
 
 
-# =========================================================
+# ============================================================
 # GRAD-CAM
-# =========================================================
+# ============================================================
 
 def make_gradcam_heatmap(
     img_array,
@@ -225,16 +549,19 @@ def make_gradcam_heatmap(
     grad_model = tf.keras.models.Model(
         [model.inputs],
         [
-            model.get_layer(last_conv_layer_name).output,
+            model.get_layer(
+                last_conv_layer_name
+            ).output,
             model.output
         ]
     )
 
     with tf.GradientTape() as tape:
 
-        last_conv_layer_output, preds = grad_model(img_array)
+        last_conv_layer_output, preds = (
+            grad_model(img_array)
+        )
 
-        # Handle model output
         if pred_index is None:
 
             pred_index = tf.argmax(
@@ -262,14 +589,18 @@ def make_gradcam_heatmap(
         @ pooled_grads[..., tf.newaxis]
     )
 
-    heatmap = tf.squeeze(heatmap)
+    heatmap = tf.squeeze(
+        heatmap
+    )
 
     heatmap = tf.maximum(
         heatmap,
         0
     )
 
-    max_value = tf.reduce_max(heatmap)
+    max_value = tf.reduce_max(
+        heatmap
+    )
 
     heatmap = tf.where(
         max_value > 0,
@@ -277,8 +608,11 @@ def make_gradcam_heatmap(
         heatmap
     )
 
+    # Keep your existing prediction logic
     confidence = float(
-        tf.nn.softmax(preds[0])[pred_index].numpy()
+        tf.nn.softmax(
+            preds[0]
+        )[pred_index].numpy()
     )
 
     return (
@@ -288,27 +622,42 @@ def make_gradcam_heatmap(
     )
 
 
-# =========================================================
+# ============================================================
 # EXPLANATION
-# =========================================================
+# ============================================================
 
-def generate_explanation(grade, heatmap):
+def generate_explanation(
+    grade,
+    heatmap
+):
 
     h, w = heatmap.shape
 
     quadrants = {
 
         "Superior-Nasal":
-            heatmap[:h//2, :w//2].mean(),
+            heatmap[
+                :h // 2,
+                :w // 2
+            ].mean(),
 
         "Superior-Temporal":
-            heatmap[:h//2, w//2:].mean(),
+            heatmap[
+                :h // 2,
+                w // 2:
+            ].mean(),
 
         "Inferior-Nasal":
-            heatmap[h//2:, :w//2].mean(),
+            heatmap[
+                h // 2:,
+                :w // 2
+            ].mean(),
 
         "Inferior-Temporal":
-            heatmap[h//2:, w//2:].mean()
+            heatmap[
+                h // 2:,
+                w // 2:
+            ].mean()
     }
 
     hot_region = max(
@@ -319,19 +668,19 @@ def generate_explanation(grade, heatmap):
     findings = {
 
         0:
-        "No visible diabetic retinopathy was detected. The retinal appearance is broadly consistent with the no-DR class.",
+        "The model classified this image as No DR. No strong model evidence associated with diabetic retinopathy was identified.",
 
         1:
-        "The model classified the image as Mild DR. Early retinal changes associated with mild diabetic retinopathy may be present.",
+        "The model classified this image as Mild DR. Early retinal changes associated with mild diabetic retinopathy may be present.",
 
         2:
-        "The model classified the image as Moderate DR. Retinal changes associated with moderate diabetic retinopathy may be present.",
+        "The model classified this image as Moderate DR. Retinal changes associated with moderate diabetic retinopathy may be present.",
 
         3:
-        "The model classified the image as Severe DR. More extensive retinal abnormalities may be present.",
+        "The model classified this image as Severe DR. More extensive retinal abnormalities may be present.",
 
         4:
-        "The model classified the image as Proliferative DR. Abnormal retinal vascular changes may be present."
+        "The model classified this image as Proliferative DR. Abnormal retinal vascular changes may be present."
     }
 
     guidance = {
@@ -359,9 +708,9 @@ def generate_explanation(grade, heatmap):
     )
 
 
-# =========================================================
+# ============================================================
 # LABELS
-# =========================================================
+# ============================================================
 
 GRADE_LABELS = [
     "No DR",
@@ -371,116 +720,149 @@ GRADE_LABELS = [
     "Proliferative DR"
 ]
 
-GRADE_COLORS = [
-    "#2e7d32",
-    "#7b7b00",
-    "#e67e22",
-    "#d35400",
-    "#b71c1c"
-]
 
-
-# =========================================================
+# ============================================================
 # SIDEBAR
-# =========================================================
+# ============================================================
 
 with st.sidebar:
 
     st.markdown(
-        "## 👁️ NetraAI"
-    )
+        """
+        <div class="sidebar-brand">
+            👁️ NetraAI
+        </div>
 
-    st.caption(
-        "Explainable AI for Diabetic Retinopathy Screening"
-    )
-
-    st.divider()
-
-    st.markdown("### 📊 Model")
-
-    st.write(
-        "**Architecture:** Lightweight CNN"
-    )
-
-    st.write(
-        "**Input:** 224 × 224 retinal image"
-    )
-
-    st.write(
-        "**Classes:** 5 DR grades"
-    )
-
-    st.write(
-        "**Explainability:** Grad-CAM"
+        <div class="sidebar-subtitle">
+            Explainable AI for Diabetic Retinopathy Screening
+        </div>
+        """,
+        unsafe_allow_html=True
     )
 
     st.divider()
 
-    st.markdown("### 🧪 Dataset")
+    st.markdown(
+        """
+        <div class="sidebar-heading">
+            📊 MODEL
+        </div>
 
-    st.write(
-        "**APTOS 2019 Blindness Detection**"
-    )
+        <div class="sidebar-item">
+            Architecture: Lightweight CNN
+        </div>
 
-    st.write(
-        "5-class diabetic retinopathy grading"
+        <div class="sidebar-item">
+            Input: 224 × 224
+        </div>
+
+        <div class="sidebar-item">
+            Classes: 5 DR grades
+        </div>
+
+        <div class="sidebar-item">
+            Explainability: Grad-CAM
+        </div>
+        """,
+        unsafe_allow_html=True
     )
 
     st.divider()
 
-    st.markdown("### ⚠️ Important")
+    st.markdown(
+        """
+        <div class="sidebar-heading">
+            🧪 DATASET
+        </div>
 
-    st.caption(
-        "NetraAI is an AI-assisted screening "
-        "prototype and should not replace "
-        "professional clinical evaluation."
+        <div class="sidebar-item">
+            APTOS 2019 Blindness Detection
+        </div>
+
+        <div class="sidebar-item">
+            5-class DR grading
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    st.divider()
+
+    st.markdown(
+        """
+        <div class="sidebar-heading">
+            ⚠️ IMPORTANT
+        </div>
+
+        <div class="sidebar-item">
+            NetraAI is an AI-assisted screening
+            prototype and does not replace
+            professional clinical evaluation.
+        </div>
+        """,
+        unsafe_allow_html=True
     )
 
 
-# =========================================================
-# HEADER
-# =========================================================
-
-st.markdown("""
-<div class="netra-header">
-
-<div class="netra-title">
-👁️ NetraAI
-</div>
-
-<div class="netra-subtitle">
-Lightweight & Explainable AI for Diabetic Retinopathy Screening
-</div>
-
-</div>
-""", unsafe_allow_html=True)
-
-
-# =========================================================
-# INTRO
-# =========================================================
+# ============================================================
+# MAIN HEADER
+# ============================================================
 
 st.markdown(
-    "### 🔍 Retina Analysis"
+    """
+<div class="netra-header">
+
+    <div class="netra-title">
+        👁️ NetraAI
+    </div>
+
+    <div class="netra-subtitle">
+        Lightweight & Explainable AI for Diabetic Retinopathy Screening
+    </div>
+
+</div>
+""",
+    unsafe_allow_html=True
+)
+
+
+# ============================================================
+# RETINA ANALYSIS
+# ============================================================
+
+st.markdown(
+    """
+    <div class="section-title">
+        🔍 Retina Analysis
+    </div>
+    """,
+    unsafe_allow_html=True
 )
 
 st.write(
-    "Upload a retinal fundus image and NetraAI "
-    "will classify the image into one of five DR grades "
-    "and provide a Grad-CAM visual explanation."
+    "Upload a retinal fundus image to receive an "
+    "AI-assisted DR classification and visual explanation."
 )
 
 
-# =========================================================
+# ============================================================
 # UPLOAD
-# =========================================================
+# ============================================================
 
 uploaded_file = st.file_uploader(
     "Upload retinal fundus image",
-    type=["png", "jpg", "jpeg"],
+    type=[
+        "png",
+        "jpg",
+        "jpeg"
+    ],
     help="Supported formats: PNG, JPG and JPEG"
 )
 
+
+# ============================================================
+# IF IMAGE UPLOADED
+# ============================================================
 
 if uploaded_file:
 
@@ -488,19 +870,25 @@ if uploaded_file:
         uploaded_file
     ).convert("RGB")
 
-    img_array = np.array(img)
+    img_array = np.array(
+        img
+    )
 
-    # -----------------------------------------------------
+    # --------------------------------------------------------
     # IMAGE PREVIEW
-    # -----------------------------------------------------
+    # --------------------------------------------------------
 
     st.markdown(
-        '<div class="section-title">📷 Image Preview</div>',
+        """
+        <div class="section-title">
+            📷 Image Preview
+        </div>
+        """,
         unsafe_allow_html=True
     )
 
     preview_col1, preview_col2 = st.columns(
-        [2, 1]
+        [2.5, 1]
     )
 
     with preview_col1:
@@ -514,43 +902,51 @@ if uploaded_file:
     with preview_col2:
 
         st.markdown(
-            '<div class="card">',
+            f"""
+<div class="netra-card">
+
+    <div class="card-heading">
+        Image Information
+    </div>
+
+    <p>
+        <b>Filename:</b><br>
+        {uploaded_file.name}
+    </p>
+
+    <p>
+        <b>Width:</b> {img.width}px
+    </p>
+
+    <p>
+        <b>Height:</b> {img.height}px
+    </p>
+
+    <p>
+        <b>Processing:</b><br>
+        224 × 224 pixels
+    </p>
+
+</div>
+""",
             unsafe_allow_html=True
         )
 
-        st.markdown(
-            '<div class="card-title">Image Information</div>',
-            unsafe_allow_html=True
-        )
 
-        st.write(
-            f"**Filename:** {uploaded_file.name}"
-        )
-
-        st.write(
-            f"**Width:** {img.width}px"
-        )
-
-        st.write(
-            f"**Height:** {img.height}px"
-        )
-
-        st.write(
-            "**Processing:** 224 × 224"
-        )
-
-        st.markdown(
-            '</div>',
-            unsafe_allow_html=True
-        )
-
-    # -----------------------------------------------------
+    # --------------------------------------------------------
     # ANALYZE BUTTON
-    # -----------------------------------------------------
+    # --------------------------------------------------------
+
+    st.write("")
 
     analyze = st.button(
         "🔬 Analyze Retina"
     )
+
+
+    # ========================================================
+    # ANALYSIS
+    # ========================================================
 
     if analyze:
 
@@ -564,15 +960,19 @@ if uploaded_file:
             )
 
             input_array = np.expand_dims(
-                processed.astype("float32"),
+                processed.astype(
+                    "float32"
+                ),
                 axis=0
             )
 
-            heatmap, pred_class, confidence = (
-                make_gradcam_heatmap(
-                    input_array,
-                    model
-                )
+            (
+                heatmap,
+                pred_class,
+                confidence
+            ) = make_gradcam_heatmap(
+                input_array,
+                model
             )
 
             heatmap_resized = cv2.resize(
@@ -581,13 +981,17 @@ if uploaded_file:
             )
 
             heatmap_colored = cv2.applyColorMap(
-                np.uint8(255 * heatmap_resized),
+                np.uint8(
+                    255 * heatmap_resized
+                ),
                 cv2.COLORMAP_JET
             )
 
             overlay = cv2.addWeighted(
                 cv2.cvtColor(
-                    processed.astype("uint8"),
+                    processed.astype(
+                        "uint8"
+                    ),
                     cv2.COLOR_RGB2BGR
                 ),
                 0.6,
@@ -601,61 +1005,90 @@ if uploaded_file:
                 cv2.COLOR_BGR2RGB
             )
 
-        # -------------------------------------------------
+
+        # ====================================================
         # RESULT
-        # -------------------------------------------------
+        # ====================================================
 
         st.markdown(
-            '<div class="section-title">📋 AI Screening Result</div>',
+            """
+            <div class="section-title">
+                📋 AI Screening Result
+            </div>
+            """,
             unsafe_allow_html=True
         )
 
+
         metric1, metric2, metric3 = st.columns(3)
+
 
         with metric1:
 
             st.markdown(
                 f"""
-                <div class="metric-box">
-                    <div class="metric-label">Predicted Grade</div>
-                    <div class="metric-number">
-                        Grade {pred_class}/4
-                    </div>
-                </div>
-                """,
+<div class="metric-box">
+
+    <div class="metric-label">
+        PREDICTED GRADE
+    </div>
+
+    <div class="metric-value">
+        Grade {pred_class}/4
+    </div>
+
+</div>
+""",
                 unsafe_allow_html=True
             )
+
 
         with metric2:
 
             st.markdown(
                 f"""
-                <div class="metric-box">
-                    <div class="metric-label">Confidence</div>
-                    <div class="metric-number">
-                        {confidence * 100:.1f}%
-                    </div>
-                </div>
-                """,
+<div class="metric-box">
+
+    <div class="metric-label">
+        MODEL CONFIDENCE
+    </div>
+
+    <div class="metric-value">
+        {confidence * 100:.1f}%
+    </div>
+
+</div>
+""",
                 unsafe_allow_html=True
             )
+
 
         with metric3:
 
             st.markdown(
                 f"""
-                <div class="metric-box">
-                    <div class="metric-label">Classification</div>
-                    <div class="metric-number"
-                         style="font-size:19px;">
-                        {GRADE_LABELS[pred_class]}
-                    </div>
-                </div>
-                """,
+<div class="metric-box">
+
+    <div class="metric-label">
+        CLASSIFICATION
+    </div>
+
+    <div class="metric-value"
+         style="font-size:19px;">
+
+        {GRADE_LABELS[pred_class]}
+
+    </div>
+
+</div>
+""",
                 unsafe_allow_html=True
             )
 
-        # Confidence bar
+
+        # ----------------------------------------------------
+        # CONFIDENCE
+        # ----------------------------------------------------
 
         st.write("")
 
@@ -664,57 +1097,88 @@ if uploaded_file:
         )
 
         st.progress(
-            min(confidence, 1.0)
+            min(
+                max(
+                    confidence,
+                    0.0
+                ),
+                1.0
+            )
         )
 
-        # -------------------------------------------------
-        # IMAGE EXPLANATION
-        # -------------------------------------------------
+
+        # ====================================================
+        # EXPLAINABILITY
+        # ====================================================
 
         st.markdown(
-            '<div class="section-title">🧠 Explainability</div>',
+            """
+            <div class="section-title">
+                🧠 Explainability
+            </div>
+            """,
             unsafe_allow_html=True
         )
 
+
         image_col1, image_col2, image_col3 = st.columns(3)
+
 
         with image_col1:
 
+            st.markdown(
+                '<div class="image-card-title">Original Image</div>',
+                unsafe_allow_html=True
+            )
+
             st.image(
                 img_array,
-                caption="Original Image",
                 use_container_width=True
             )
 
+
         with image_col2:
+
+            st.markdown(
+                '<div class="image-card-title">AI Attention Heatmap</div>',
+                unsafe_allow_html=True
+            )
 
             st.image(
                 cv2.cvtColor(
                     heatmap_colored,
                     cv2.COLOR_BGR2RGB
                 ),
-                caption="AI Attention Heatmap",
                 use_container_width=True
             )
+
 
         with image_col3:
 
+            st.markdown(
+                '<div class="image-card-title">Grad-CAM Overlay</div>',
+                unsafe_allow_html=True
+            )
+
             st.image(
                 overlay_rgb,
-                caption="Grad-CAM Overlay",
                 use_container_width=True
             )
 
-        # -------------------------------------------------
-        # EXPLANATION
-        # -------------------------------------------------
 
-        findings, hot_region, guidance = (
-            generate_explanation(
-                pred_class,
-                heatmap_resized
-            )
+        # ====================================================
+        # EXPLANATION
+        # ====================================================
+
+        (
+            findings,
+            hot_region,
+            guidance
+        ) = generate_explanation(
+            pred_class,
+            heatmap_resized
         )
+
 
         tab1, tab2, tab3 = st.tabs(
             [
@@ -724,40 +1188,50 @@ if uploaded_file:
             ]
         )
 
+
+        # ----------------------------------------------------
+        # RESULT TAB
+        # ----------------------------------------------------
+
         with tab1:
 
             st.markdown(
                 f"""
-                <div class="result-card">
+<div class="result-card">
 
-                    <div class="prediction-label">
-                        AI PREDICTION
-                    </div>
+    <div class="prediction-label">
+        AI PREDICTION
+    </div>
 
-                    <div class="prediction-value">
-                        {GRADE_LABELS[pred_class]}
-                    </div>
+    <div class="prediction-value">
+        {GRADE_LABELS[pred_class]}
+    </div>
 
-                    <br>
+    <div class="grade-badge">
+        Grade {pred_class} / 4
+    </div>
 
-                    <span class="grade-badge">
-                        Grade {pred_class} / 4
-                    </span>
+    <p style="margin-top:16px;">
+        Model confidence:
+        <b>
+            {confidence * 100:.1f}%
+        </b>
+    </p>
 
-                    <p style="margin-top:15px;">
-                        Model confidence:
-                        <b>{confidence * 100:.1f}%</b>
-                    </p>
-
-                </div>
-                """,
+</div>
+""",
                 unsafe_allow_html=True
             )
+
+
+        # ----------------------------------------------------
+        # EXPLANATION TAB
+        # ----------------------------------------------------
 
         with tab2:
 
             st.markdown(
-                f"**Model observation**"
+                "### Model Observation"
             )
 
             st.write(
@@ -770,28 +1244,37 @@ if uploaded_file:
             )
 
             st.caption(
-                "The heatmap represents regions that "
-                "contributed strongly to the model's prediction. "
+                "The heatmap shows image regions that "
+                "contributed strongly to the model prediction. "
                 "It should not be interpreted as a definitive "
                 "clinical lesion map."
             )
 
+
+        # ----------------------------------------------------
+        # CLINICAL GUIDANCE TAB
+        # ----------------------------------------------------
+
         with tab3:
+
+            st.markdown(
+                "### Screening Guidance"
+            )
 
             st.write(
                 guidance
             )
 
             st.warning(
-                "This output is for AI-assisted screening "
-                "and educational/research purposes. "
+                "This is an AI-assisted screening prototype. "
                 "A qualified healthcare professional should "
-                "make the clinical diagnosis."
+                "make the final clinical assessment."
             )
 
-        # -------------------------------------------------
+
+        # ====================================================
         # TECHNICAL DETAILS
-        # -------------------------------------------------
+        # ====================================================
 
         with st.expander(
             "⚙️ View Technical Details"
@@ -799,9 +1282,10 @@ if uploaded_file:
 
             tech1, tech2, tech3 = st.columns(3)
 
+
             with tech1:
 
-                st.write(
+                st.markdown(
                     "**Input Resolution**"
                 )
 
@@ -809,9 +1293,10 @@ if uploaded_file:
                     "224 × 224 pixels"
                 )
 
+
             with tech2:
 
-                st.write(
+                st.markdown(
                     "**Preprocessing**"
                 )
 
@@ -819,9 +1304,10 @@ if uploaded_file:
                     "Resize + CLAHE"
                 )
 
+
             with tech3:
 
-                st.write(
+                st.markdown(
                     "**Explainability**"
                 )
 
@@ -829,17 +1315,18 @@ if uploaded_file:
                     "Grad-CAM"
                 )
 
-            st.write("")
 
-            st.write(
-                "**Prediction pipeline:**"
+            st.divider()
+
+            st.markdown(
+                "**Prediction Pipeline**"
             )
 
             st.code(
                 """
 Fundus Image
       ↓
-Resize 224×224
+Resize 224 × 224
       ↓
 CLAHE Enhancement
       ↓
@@ -850,53 +1337,55 @@ DR Classification
 Grad-CAM
       ↓
 Prediction + Explanation
-                """,
+""",
                 language="text"
             )
 
 
-# =========================================================
+# ============================================================
 # EMPTY STATE
-# =========================================================
+# ============================================================
 
 else:
 
     st.markdown(
         """
-        <div class="card"
-             style="text-align:center;
-                    padding:45px;">
+<div class="empty-state">
 
-            <div style="font-size:45px;">
-                👁️
-            </div>
+    <div class="empty-icon">
+        👁️
+    </div>
 
-            <h3 style="color:#123b68;">
-                Ready to analyze a retinal image
-            </h3>
+    <div class="empty-title">
+        Ready to analyze a retinal image
+    </div>
 
-            <p style="color:#64748b;">
-                Upload a fundus image above to start
-                AI-assisted diabetic retinopathy screening.
-            </p>
+    <div class="empty-text">
+        Upload a fundus image above to start
+        AI-assisted diabetic retinopathy screening.
+    </div>
 
-        </div>
-        """,
+</div>
+""",
         unsafe_allow_html=True
     )
 
 
-# =========================================================
+# ============================================================
 # FOOTER
-# =========================================================
+# ============================================================
 
 st.markdown(
     """
-    <div class="footer">
-        NetraAI • Lightweight Explainable AI for DR Screening
-        <br>
-        Research / Prototype System
-    </div>
-    """,
+<div class="netra-footer">
+
+    NetraAI • Lightweight Explainable AI for DR Screening
+
+    <br>
+
+    Research / Prototype System
+
+</div>
+""",
     unsafe_allow_html=True
 )
