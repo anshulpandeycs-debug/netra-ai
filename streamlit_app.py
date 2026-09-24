@@ -1,101 +1,99 @@
 import streamlit as st
-import streamlit.components.v1 as components
-import keras
 import tensorflow as tf
 import numpy as np
 import cv2
-import base64
-import io
-import os
-import json
 from PIL import Image
 
-st.set_page_config(
-    page_title="NETRA AI — Explainable DR Screening",
-    layout="wide",
-    initial_sidebar_state="collapsed"
-)
-
-# Clean full-bleed UI styling
-st.markdown("""
-    <style>
-        #MainMenu {visibility: hidden;}
-        header {visibility: hidden;}
-        footer {visibility: hidden;}
-        .block-container {
-            padding: 0rem !important;
-            max-width: 100% !important;
-        }
-        iframe {
-            display: block;
-            border: none;
-            width: 100vw;
-            height: 100vh;
-        }
-    </style>
-""", unsafe_allow_html=True)
+st.set_page_config(page_title="NETRA AI — DR Screening", layout="wide")
 
 @st.cache_resource
 def load_netra_model():
-    model_path = "netraai_final.keras"
-    if os.path.exists(model_path):
-        try:
-            return keras.models.load_model(model_path)
-        except Exception as e:
-            st.error(f"Error loading model: {e}")
-            return None
-    return None
+    return tf.keras.models.load_model("netraai_final.keras")
 
 model = load_netra_model()
 
-def preprocess_for_efficientnet(img_pil, target_size=(224, 224)):
-    """ Resizes and formats image for standard EfficientNetB0 inference """
-    img_resized = img_pil.resize(target_size)
-    img_array = np.array(img_resized, dtype=np.float32)
-    # Ensure 3 channels (RGB)
-    if img_array.ndim == 2:
-        img_array = np.stack((img_array,)*3, axis=-1)
-    elif img_array.shape[-1] == 4:
-        img_array = img_array[:, :, :3]
-    return img_array
+def preprocess_image(img_array, size=224):
+    img = cv2.resize(img_array, (size, size))
+    lab = cv2.cvtColor(img, cv2.COLOR_RGB2LAB)
+    l, a, b = cv2.split(lab)
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    l = clahe.apply(l)
+    lab = cv2.merge((l, a, b))
+    return cv2.cvtColor(lab, cv2.COLOR_LAB2RGB)
 
-def run_model_inference(img_pil):
-    img_array = preprocess_for_efficientnet(img_pil, target_size=(224, 224))
-    input_tensor = np.expand_dims(img_array, axis=0)
+def make_gradcam_heatmap(img_array, model, last_conv_layer_name='top_conv', pred_index=None):
+    grad_model = tf.keras.models.Model(
+        [model.inputs], [model.get_layer(last_conv_layer_name).output, model.output]
+    )
+    with tf.GradientTape() as tape:
+        last_conv_layer_output, preds = grad_model(img_array)
+        if pred_index is None:
+            pred_index = tf.argmax(preds[0])
+        class_channel = preds[:, pred_index]
+    grads = tape.gradient(class_channel, last_conv_layer_output)
+    pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
+    last_conv_layer_output = last_conv_layer_output[0]
+    heatmap = last_conv_layer_output @ pooled_grads[..., tf.newaxis]
+    heatmap = tf.squeeze(heatmap)
+    heatmap = tf.maximum(heatmap, 0) / tf.math.reduce_max(heatmap)
+    confidence = float(tf.nn.softmax(preds[0])[pred_index].numpy())
+    return heatmap.numpy(), int(pred_index.numpy()), confidence
 
-    if model is not None:
-        # Standard model prediction
-        preds = model.predict(input_tensor)
-        pred_class = int(np.argmax(preds[0]))
-        confidence = float(preds[0][pred_class])
-    else:
-        # Fallback if model isn't found
-        pred_class = 0
-        confidence = 0.9000
-
-    # Convert original PIL image to base64
-    buffered_orig = io.BytesIO()
-    img_pil.save(buffered_orig, format="PNG")
-    orig_b64 = "data:image/png;base64," + base64.b64encode(buffered_orig.getvalue()).decode()
-
-    # Generate Grad-CAM / Activation Overlay
-    img_cv = cv2.cvtColor(np.uint8(img_array), cv2.COLOR_RGB2BGR)
-    gray = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY)
-    heatmap = cv2.applyColorMap(gray, cv2.COLORMAP_JET)
-    overlay = cv2.addWeighted(img_cv, 0.6, heatmap, 0.4, 0)
-
-    _, buffer_grad = cv2.imencode('.png', overlay)
-    grad_b64 = "data:image/png;base64," + base64.b64encode(buffer_grad).decode()
-
-    return pred_class, confidence, orig_b64, grad_b64
+def generate_explanation(grade, heatmap):
+    h, w = heatmap.shape
+    quadrants = {
+        'superior-nasal': heatmap[:h//2, :w//2].mean(), 'superior-temporal': heatmap[:h//2, w//2:].mean(),
+        'inferior-nasal': heatmap[h//2:, :w//2].mean(), 'inferior-temporal': heatmap[h//2:, w//2:].mean(),
+    }
+    hot_region = max(quadrants, key=quadrants.get)
+    findings = {
+        0: "No visible diabetic retinopathy was detected. The blood vessels and retinal surface appear within normal limits.",
+        1: "Mild non-proliferative diabetic retinopathy (NPDR) is present, with early microaneurysms identified.",
+        2: "Moderate NPDR is present, with microaneurysms, hemorrhages, and early hard exudates visible.",
+        3: "Severe NPDR is present, with extensive hemorrhages and significant microvascular changes.",
+        4: "Proliferative diabetic retinopathy (PDR) is present, with abnormal new blood vessel growth detected.",
+    }
+    guidance = {
+        0: "Continue routine annual screening and maintain good blood sugar and blood pressure control.",
+        1: "Schedule a follow-up screening within 9-12 months and tighten glycemic control.",
+        2: "Referral to an ophthalmologist is recommended within 3-6 months.",
+        3: "Urgent referral to an ophthalmologist is recommended within weeks, not months.",
+        4: "Immediate referral to a retina specialist is strongly recommended — this stage carries real risk of vision loss.",
+    }
+    return f"{findings[grade]} Attention was concentrated in the {hot_region} region.\n\n{guidance[grade]}"
 
 GRADE_LABELS = ["No DR", "Mild DR", "Moderate DR", "Severe DR", "Proliferative DR"]
 
-# Read HTML View
-if os.path.exists("index.html"):
-    with open("index.html", "r", encoding="utf-8") as f:
-        html_code = f.read()
+st.title("🩺 NetraAI — Explainable AI for Diabetic Retinopathy Screening")
+st.caption("Upload a retinal fundus image to get an AI-assisted DR grading with visual explanation.")
 
-    components.html(html_code, height=950, scrolling=True)
-else:
-    st.error("Error: `index.html` file missing from repository root.")
+uploaded_file = st.file_uploader("Upload a retinal image", type=["png", "jpg", "jpeg"])
+
+if uploaded_file:
+    img = Image.open(uploaded_file).convert("RGB")
+    img_array = np.array(img)
+
+    with st.spinner("Analyzing..."):
+        processed = preprocess_image(img_array, size=224)
+        input_array = np.expand_dims(processed.astype('float32'), axis=0)
+        heatmap, pred_class, confidence = make_gradcam_heatmap(input_array, model)
+        heatmap_resized = cv2.resize(heatmap, (224, 224))
+        heatmap_colored = cv2.applyColorMap(np.uint8(255 * heatmap_resized), cv2.COLORMAP_JET)
+        overlay = cv2.addWeighted(cv2.cvtColor(processed.astype('uint8'), cv2.COLOR_RGB2BGR), 0.6, heatmap_colored, 0.4, 0)
+        overlay_rgb = cv2.cvtColor(overlay, cv2.COLOR_BGR2RGB)
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.image(img_array, caption="Original", use_container_width=True)
+    with col2:
+        st.image(cv2.cvtColor(heatmap_colored, cv2.COLOR_BGR2RGB), caption="Heatmap", use_container_width=True)
+    with col3:
+        st.image(overlay_rgb, caption="Grad-CAM Overlay", use_container_width=True)
+
+    st.subheader(f"Predicted: {GRADE_LABELS[pred_class]}  (Grade {pred_class}/4)")
+    st.write(f"**Confidence:** {confidence*100:.1f}%")
+
+    st.markdown("### Clinical Explanation")
+    st.write(generate_explanation(pred_class, heatmap_resized))
+
+    st.info("⚠️ AI-assisted screening tool — clinical evaluation should be performed by a qualified healthcare professional.")
