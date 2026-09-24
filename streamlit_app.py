@@ -61,20 +61,28 @@ st.markdown(
         padding: 10px;
     }
 
-    /* Buttons */
+    /* Buttons Fix - Explicit White Text */
     .stButton > button {
         border-radius: 8px;
-        border: 1px solid #0f766e;
-        background-color: #0f766e;
-        color: white;
+        border: 1px solid #0f766e !important;
+        background-color: #0f766e !important;
+        color: #ffffff !important;
         font-weight: 600;
         padding: 0.55rem 1.2rem;
     }
 
+    .stButton > button p {
+        color: #ffffff !important;
+    }
+
     .stButton > button:hover {
-        background-color: #115e59;
-        border-color: #115e59;
-        color: white;
+        background-color: #115e59 !important;
+        border-color: #115e59 !important;
+        color: #ffffff !important;
+    }
+
+    .stButton > button:hover p {
+        color: #ffffff !important;
     }
 
     /* Metric cards */
@@ -255,19 +263,9 @@ def make_gradcam_heatmap(
     if float(max_value.numpy()) > 0:
         heatmap = heatmap / max_value
 
-    # Confidence
-    probabilities = tf.nn.softmax(
-        preds[0]
-    )
-
-    confidence = float(
-        probabilities[pred_index].numpy()
-    )
-
     return (
         heatmap.numpy(),
-        int(pred_index.numpy()),
-        confidence
+        int(pred_index.numpy())
     )
 
 
@@ -635,7 +633,7 @@ if analyze_button:
             )
 
             # Grad-CAM + prediction
-            heatmap, pred_class, confidence = (
+            heatmap, pred_class = (
                 make_gradcam_heatmap(
                     input_array,
                     model
@@ -682,7 +680,6 @@ if analyze_button:
 
             st.session_state.result = {
                 "grade": pred_class,
-                "confidence": confidence,
                 "heatmap": heatmap_colored,
                 "overlay": overlay_rgb,
                 "explanation": explanation
@@ -706,14 +703,13 @@ if st.session_state.result is not None:
     result = st.session_state.result
 
     grade = result["grade"]
-    confidence = result["confidence"]
 
     st.divider()
 
     st.markdown("## 📊 Screening Result")
 
-    # Metrics
-    metric1, metric2, metric3 = st.columns(3)
+    # Metrics (Two Columns)
+    metric1, metric2 = st.columns(2)
 
     with metric1:
 
@@ -727,13 +723,6 @@ if st.session_state.result is not None:
         st.metric(
             "Classification",
             GRADE_LABELS[grade]
-        )
-
-    with metric3:
-
-        st.metric(
-            "Model Confidence",
-            f"{confidence * 100:.1f}%"
         )
 
 
