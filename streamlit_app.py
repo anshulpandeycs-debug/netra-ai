@@ -310,7 +310,8 @@ if uploaded_file:
 
             st.markdown("### 🧠 4-Line Clinical Explanation")
             explanation_text = generate_explanation(pred_class, heatmap_resized)
+            formatted_explanation = explanation_text.replace("\n", "<br>")
             
-            st.markdown(f'<div class="explanation-box">{explanation_text.replace("\n", "<br>")}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="explanation-box">{formatted_explanation}</div>', unsafe_allow_html=True)
 
             st.warning("⚠️ **Clinical note:** NetraAI is an AI-assisted decision support prototype. Diagnostic outcomes should be confirmed by a certified ophthalmologist.")
