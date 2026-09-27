@@ -128,15 +128,15 @@ def evaluate_image_quality(img_rgb):
     _, mask = cv2.threshold(gray, 10, 255, cv2.THRESH_BINARY)
     fov_coverage = (cv2.countNonZero(mask) / (gray.shape[0] * gray.shape[1])) * 100
 
-    # Decision Logic
-    is_focus_pass = focus_score >= 100.0
-    is_illum_pass = 40.0 <= illumination_score <= 210.0
-    is_fov_pass = fov_coverage >= 40.0
+# Calibrated Decision Logic
+    is_focus_pass = focus_score >= 15.0         # Lowered from 100.0 for resized 224x224 images
+    is_illum_pass = 30.0 <= illumination_score <= 220.0  # Slightly widened for varying lighting
+    is_fov_pass = fov_coverage >= 35.0          # Lowered from 40.0% to accommodate tight crops
     
     if is_focus_pass and is_illum_pass and is_fov_pass:
         status = "PASS"
         action = "Image quality meets screening criteria. Proceeding directly to AI classification."
-    elif focus_score < 40.0 or illumination_score < 20.0 or fov_coverage < 25.0:
+    elif focus_score < 5.0 or illumination_score < 15.0 or fov_coverage < 20.0:
         status = "RECAPTURE"
         action = "Unusable image quality. Recapture required (Severe blur or unilluminated field)."
     else:
@@ -150,7 +150,6 @@ def evaluate_image_quality(img_rgb):
         "illumination_score": round(illumination_score, 1),
         "fov_coverage": round(fov_coverage, 1)
     }
-
 # =========================================================
 # 2. PREPROCESSING & ADAPTIVE ENHANCEMENT
 # =========================================================
