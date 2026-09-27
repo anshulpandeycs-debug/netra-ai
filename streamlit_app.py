@@ -4,7 +4,6 @@ import numpy as np
 import cv2
 from PIL import Image
 import io
-import time
 
 # Optional imports with graceful fallbacks
 try:
@@ -81,18 +80,11 @@ st.markdown("""
         background-color: #115e59 !important;
         border-color: #115e59 !important;
     }
-    .metric-card {
-        background-color: white;
-        border: 1px solid #e2e8f0;
-        border-radius: 10px;
-        padding: 14px;
-        margin-bottom: 10px;
-    }
     </style>
 """, unsafe_allow_html=True)
 
 # =========================================================
-# MODEL LOADING (PERFECTLY PRESERVED)
+# MODEL LOADING
 # =========================================================
 @st.cache_resource
 def load_netra_model():
@@ -116,22 +108,22 @@ def evaluate_image_quality(img_rgb):
     """
     gray = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY)
     
-    # 1. Focus via Variance of Laplacian
+    # Focus via Variance of Laplacian
     focus_score = cv2.Laplacian(gray, cv2.CV_64F).var()
     
-    # 2. Illumination via LAB L-channel
+    # Illumination via LAB L-channel
     lab = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2LAB)
     l_channel = lab[:, :, 0]
     illumination_score = float(l_channel.mean())
     
-    # 3. Field of View (FOV) ratio
+    # Field of View (FOV) ratio
     _, mask = cv2.threshold(gray, 10, 255, cv2.THRESH_BINARY)
     fov_coverage = (cv2.countNonZero(mask) / (gray.shape[0] * gray.shape[1])) * 100
 
-# Calibrated Decision Logic
-    is_focus_pass = focus_score >= 15.0         # Lowered from 100.0 for resized 224x224 images
-    is_illum_pass = 30.0 <= illumination_score <= 220.0  # Slightly widened for varying lighting
-    is_fov_pass = fov_coverage >= 35.0          # Lowered from 40.0% to accommodate tight crops
+    # Calibrated Decision Logic
+    is_focus_pass = focus_score >= 15.0
+    is_illum_pass = 30.0 <= illumination_score <= 220.0
+    is_fov_pass = fov_coverage >= 35.0
     
     if is_focus_pass and is_illum_pass and is_fov_pass:
         status = "PASS"
@@ -150,11 +142,11 @@ def evaluate_image_quality(img_rgb):
         "illumination_score": round(illumination_score, 1),
         "fov_coverage": round(fov_coverage, 1)
     }
+
 # =========================================================
 # 2. PREPROCESSING & ADAPTIVE ENHANCEMENT
 # =========================================================
 def preprocess_standard(img_rgb, size=224):
-    """Original pipeline: 224x224 + CLAHE"""
     resized = cv2.resize(img_rgb, (size, size))
     lab = cv2.cvtColor(resized, cv2.COLOR_RGB2LAB)
     l, a, b = cv2.split(lab)
@@ -164,14 +156,59 @@ def preprocess_standard(img_rgb, size=224):
     return cv2.cvtColor(enhanced_lab, cv2.COLOR_LAB2RGB)
 
 def preprocess_adaptive_denoise(img_rgb, size=224):
-    """Adaptive pipeline for borderline images: CLAHE + FastDenoising"""
     processed = preprocess_standard(img_rgb, size=size)
-    # Apply mild bilateral filtering to preserve edges while removing low-light noise
     denoised = cv2.bilateralFilter(processed, d=5, sigmaColor=50, sigmaSpace=50)
     return denoised
 
 # =========================================================
-# 3. GRAD-CAM EXPLAINABILITY
+# 3. PHASE 2: RETINAL STRUCTURE EXTRACTION MODULES
+# =========================================================
+def extract_vascular_tree(img_rgb):
+    """Green-channel extraction + CLAHE + Adaptive Thresholding for Vessels."""
+    green_ch = img_rgb[:, :, 1]
+    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+    enhanced_g = clahe.apply(green_ch)
+    
+    # Morphological processing to highlight tubular vessels
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    tophat = cv2.morphologyEx(enhanced_g, cv2.MORPH_TOPHAT, kernel)
+    
+    # Thresholding to isolate vascular structure
+    _, vessel_mask = cv2.threshold(tophat, 15, 255, cv2.THRESH_BINARY)
+    vessel_bgr = cv2.cvtColor(vessel_mask, cv2.COLOR_GRAY2RGB)
+    return vessel_bgr
+
+def localize_optic_disc_and_fovea(img_rgb):
+    """Locates the Optic Disc (highest localized intensity) and Fovea."""
+    img_copy = img_rgb.copy()
+    gray = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY)
+    
+    # Smooth image to prevent noisy peak intensity
+    blurred = cv2.GaussianBlur(gray, (15, 15), 0)
+    min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(blurred)
+    
+    # Optic Disc Bounding Box (Centroid at max_loc)
+    od_center = max_loc
+    od_radius = 24
+    cv2.circle(img_copy, od_center, od_radius, (0, 255, 255), 2)
+    cv2.putText(img_copy, "Optic Disc", (od_center[0] - 30, od_center[1] - 30), 
+                cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 255), 1)
+
+    # Estimate Fovea (roughly 2.5 disc diameters temporally)
+    # Temporal direction approximation (offset horizontally)
+    h, w = gray.shape
+    fovea_x = od_center[0] - int(od_radius * 2.8) if od_center[0] > w // 2 else od_center[0] + int(od_radius * 2.8)
+    fovea_y = od_center[1] + 5
+    fovea_x = np.clip(fovea_x, 10, w - 10)
+    
+    cv2.circle(img_copy, (fovea_x, fovea_y), 12, (255, 0, 0), 2)
+    cv2.putText(img_copy, "Fovea", (fovea_x - 20, fovea_y - 18), 
+                cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 0, 0), 1)
+
+    return img_copy
+
+# =========================================================
+# 4. GRAD-CAM EXPLAINABILITY
 # =========================================================
 def make_gradcam_heatmap(img_array, model, last_conv_layer_name='top_conv', pred_index=None):
     try:
@@ -207,35 +244,6 @@ def make_gradcam_heatmap(img_array, model, last_conv_layer_name='top_conv', pred
     return heatmap.numpy(), int(pred_index.numpy()), confidence
 
 # =========================================================
-# 4. SHAP EXPLAINABILITY (SAFE FALLBACK)
-# =========================================================
-def run_shap_explanation(processed_img, model):
-    if not SHAP_AVAILABLE or not MATPLOTLIB_AVAILABLE:
-        return None
-    try:
-        # Lightweight SHAP summary via GradientExplainer proxy
-        input_tensor = np.expand_dims(processed_img.astype('float32'), axis=0)
-        background = np.zeros((1, 224, 224, 3), dtype=np.float32)
-        explainer = shap.GradientExplainer(model, background)
-        shap_values = explainer.shap_values(input_tensor)
-        
-        fig, ax = plt.subplots(figsize=(4, 4))
-        # Plot mean absolute SHAP values across channels
-        shap_map = np.mean(np.abs(shap_values[0][0]), axis=-1)
-        ax.imshow(processed_img)
-        ax.imshow(shap_map, cmap='magma', alpha=0.5)
-        ax.axis('off')
-        plt.tight_layout()
-        
-        buf = io.BytesIO()
-        plt.savefig(buf, format='png', bbox_inches='tight', pad_inches=0)
-        plt.close(fig)
-        buf.seek(0)
-        return Image.open(buf)
-    except Exception:
-        return None
-
-# =========================================================
 # 5. CLINICAL EXPLANATIONS
 # =========================================================
 GRADE_LABELS = ["No DR", "Mild DR", "Moderate DR", "Severe DR", "Proliferative DR"]
@@ -245,7 +253,7 @@ def generate_explanation(grade, heatmap):
     quadrants = {
         'Superior-Nasal': heatmap[:h//2, :w//2].mean(),
         'Superior-Temporal': heatmap[:h//2, w//2:].mean(),
-        'Inferior-Nasally': heatmap[h//2:, :w//2].mean(),
+        'Inferior-Nasal': heatmap[h//2:, :w//2].mean(),
         'Inferior-Temporal': heatmap[h//2:, w//2:].mean(),
     }
     hot_region = max(quadrants, key=quadrants.get)
@@ -257,7 +265,7 @@ def generate_explanation(grade, heatmap):
         3: f"Severe NPDR identified (4-quadrant hemorrhages / venous beading). Dense activation in {hot_region}. Urgent referral within weeks.",
         4: f"Proliferative DR detected (Neovascularization / high risk of vitreous hemorrhage). Strong salience in {hot_region}. Immediate specialist care required."
     }
-    return details.get(grade, "Screening complete.")
+    return details.get(grade, "Screening complete."), quadrants
 
 # =========================================================
 # SIDEBAR NAVIGATION
@@ -288,7 +296,7 @@ with st.sidebar:
 # =========================================================
 if page == "◉ Screening Pipeline":
     st.title("Diabetic Retinopathy Screening Pipeline")
-    st.caption("Integrated Fundus Analysis: Quality Gate → Preprocessing → DR Grading → XAI")
+    st.caption("Integrated Fundus Analysis: Quality Gate → Preprocessing → DR Grading → Retinal Features → XAI")
 
     if not model_status:
         st.error("Model file missing or failed to load. Check `netraai_final.keras`.")
@@ -307,9 +315,9 @@ if page == "◉ Screening Pipeline":
         q_metrics = evaluate_image_quality(img_array)
         
         q_col1, q_col2, q_col3, q_col4 = st.columns(4)
-        q_col1.metric("Focus (Laplacian Var)", f"{q_metrics['focus_score']}", delta="≥ 100 Pass" if q_metrics['focus_score']>=100 else "Low")
-        q_col2.metric("Illumination (Mean L)", f"{q_metrics['illumination_score']}", delta="40-210 Pass")
-        q_col3.metric("FOV Coverage", f"{q_metrics['fov_coverage']}%", delta="≥ 40% Pass")
+        q_col1.metric("Focus (Laplacian Var)", f"{q_metrics['focus_score']}", delta="≥ 15.0 Pass" if q_metrics['focus_score']>=15.0 else "Low")
+        q_col2.metric("Illumination (Mean L)", f"{q_metrics['illumination_score']}", delta="30-220 Pass")
+        q_col3.metric("FOV Coverage", f"{q_metrics['fov_coverage']}%", delta="≥ 35% Pass")
         
         status = q_metrics['status']
         if status == "PASS":
@@ -330,7 +338,7 @@ if page == "◉ Screening Pipeline":
 
         # Run Classification
         st.divider()
-        st.subheader("2. AI Grading & Explainability")
+        st.subheader("2. AI Severity Grading & Grad-CAM XAI")
 
         with st.spinner("Executing EfficientNetB0 classification and computing Grad-CAM..."):
             input_tensor = np.expand_dims(processed_img.astype('float32'), axis=0)
@@ -356,29 +364,33 @@ if page == "◉ Screening Pipeline":
         with v_col3:
             st.image(overlay_rgb, caption="Grad-CAM Overlay", use_container_width=True)
 
-        # SHAP & Retinal Structure Evidence Section
+        # PHASE 2: RETINAL STRUCTURE EXTRACTION SECTION
         st.divider()
-        st.subheader("3. Explainability & Prototype Lesion Evidence")
+        st.subheader("3. Retinal Structure & Anatomical Evidence")
 
-        e_col1, e_col2 = st.columns(2)
-        with e_col1:
-            st.markdown("**SHAP Complementary Feature Importance**")
-            shap_fig = run_shap_explanation(processed_img, model)
-            if shap_fig:
-                st.image(shap_fig, caption="SHAP Regional Attributions", width=280)
-            else:
-                st.info("SHAP visualization initialized (Summary gradient proxy map active).")
+        r_col1, r_col2 = st.columns(2)
+        
+        with r_col1:
+            st.markdown("**Optic Disc & Fovea Localization**")
+            disc_fovea_img = localize_optic_disc_and_fovea(processed_img)
+            st.image(disc_fovea_img, caption="Anatomical Landmarks (Optic Disc: Yellow | Fovea: Blue)", use_container_width=True)
 
-        with e_col2:
-            st.markdown("**Retinal Structure Analysis (Prototype)**")
-            st.write("• **Optic Disc / Fovea:** Identified via intensity bounding")
-            st.write("• **Vascular Tree:** Extracted via CLAHE green-channel contrast")
-            st.write(f"• **Lesion Salience:** Focused in `{generate_explanation(pred_class, heatmap_resized).split()[-5]}` quadrant")
-            st.caption("Note: Dedicated pixel-level lesion segmentation modules are under Phase 2/3 active validation.")
+        with r_col2:
+            st.markdown("**Vascular Tree Extraction**")
+            vessel_img = extract_vascular_tree(processed_img)
+            st.image(vessel_img, caption="Segmented Retinal Vasculature Mask", use_container_width=True)
+
+        # Lesion Attention Breakdown
+        exp_text, quads = generate_explanation(pred_class, heatmap_resized)
+        
+        st.markdown("**Quadrant-Level Lesion Attention Score**")
+        q_cols = st.columns(4)
+        for idx, (q_name, score) in enumerate(quads.items()):
+            q_cols[idx].metric(q_name, f"{score:.3f}")
 
         st.markdown("---")
         st.markdown("### Clinical Report Summary")
-        st.write(generate_explanation(pred_class, heatmap_resized))
+        st.write(exp_text)
         st.warning("⚠️ **Human-in-the-loop Directive:** This AI output is for screening assistance. Clinical decision remains with a qualified eye-care professional.")
 
 # =========================================================
@@ -392,8 +404,8 @@ elif page == "▥ PS Coverage Dashboard":
         {"Module": "Image Quality Assessment", "Components": "Focus, Illumination, FOV", "Status": "IMPLEMENTED", "Details": "Live Laplacian variance & LAB illumination gate"},
         {"Module": "Adaptive Preprocessing", "Components": "CLAHE, Denoising", "Status": "IMPLEMENTED", "Details": "Adaptive bilateral filtering on borderline quality"},
         {"Module": "DR Severity Grading", "Components": "Grade 0–4 Classification", "Status": "IMPLEMENTED", "Details": "EfficientNetB0 model (`netraai_final.keras`)"},
-        {"Module": "Explainable AI (XAI)", "Components": "Grad-CAM, SHAP", "Status": "IMPLEMENTED", "Details": "Grad-CAM visual maps + SHAP feature attributions"},
-        {"Module": "Retinal Structures", "Components": "Optic Disc, Vessels, Lesions", "Status": "PROTOTYPE", "Details": "Integrated evidence layer (Phase 2 expansion planned)"},
+        {"Module": "Explainable AI (XAI)", "Components": "Grad-CAM, Quadrant Salience", "Status": "IMPLEMENTED", "Details": "Grad-CAM visual maps + quadrant attention scores"},
+        {"Module": "Retinal Structures", "Components": "Optic Disc, Fovea, Vasculature", "Status": "IMPLEMENTED (PHASE 2)", "Details": "Live intensity localization & vessel mask extraction"},
         {"Module": "Referable DR Evaluation", "Components": "Sensitivity >90%, Specificity >85%", "Status": "VALIDATION REQUIRED", "Details": "PS acceptance targets (Requires locked test set evaluation)"},
         {"Module": "Capacity Simulation", "Components": "District 100k+ Patients/Year", "Status": "IMPLEMENTED", "Details": "Interactive Python capacity & bottleneck simulator"},
         {"Module": "Simulink Artifact", "Components": "MATLAB / Simulink Model", "Status": "NOT YET IMPLEMENTED", "Details": "To be built separately in MATLAB environment"}
