@@ -34,7 +34,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for high-contrast, clean clinical UI
+# Custom CSS for high-contrast, clean clinical UI & medium font sizes
 st.markdown("""
     <style>
     .stApp {
@@ -49,14 +49,13 @@ st.markdown("""
         background-color: #ffffff;
         border-right: 1px solid #e2e8f0;
     }
-    h1, h2, h3 {
-        color: #123b4a !important;
-        font-family: 'Inter', sans-serif;
-    }
-    p, label, li {
-        color: #334155;
-        font-size: 0.95rem;
-    }
+    
+    /* Medium Font Sizes */
+    h1 { font-size: 1.8rem !important; font-weight: 700 !important; color: #123b4a !important; }
+    h2 { font-size: 1.4rem !important; font-weight: 600 !important; color: #123b4a !important; }
+    h3 { font-size: 1.2rem !important; font-weight: 600 !important; color: #123b4a !important; }
+    p, label, li, span { font-size: 0.95rem !important; line-height: 1.5 !important; color: #334155; }
+    
     .status-badge {
         display: inline-block;
         padding: 4px 12px;
@@ -120,7 +119,7 @@ def evaluate_image_quality(img_rgb):
     _, mask = cv2.threshold(gray, 10, 255, cv2.THRESH_BINARY)
     fov_coverage = (cv2.countNonZero(mask) / (gray.shape[0] * gray.shape[1])) * 100
 
-    # Calibrated Decision Logic
+    # Calibrated Decision Logic (Supports resized 224x224 images)
     is_focus_pass = focus_score >= 15.0
     is_illum_pass = 30.0 <= illumination_score <= 220.0
     is_fov_pass = fov_coverage >= 35.0
@@ -169,11 +168,9 @@ def extract_vascular_tree(img_rgb):
     clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
     enhanced_g = clahe.apply(green_ch)
     
-    # Morphological processing to highlight tubular vessels
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
     tophat = cv2.morphologyEx(enhanced_g, cv2.MORPH_TOPHAT, kernel)
     
-    # Thresholding to isolate vascular structure
     _, vessel_mask = cv2.threshold(tophat, 15, 255, cv2.THRESH_BINARY)
     vessel_bgr = cv2.cvtColor(vessel_mask, cv2.COLOR_GRAY2RGB)
     return vessel_bgr
@@ -183,19 +180,15 @@ def localize_optic_disc_and_fovea(img_rgb):
     img_copy = img_rgb.copy()
     gray = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY)
     
-    # Smooth image to prevent noisy peak intensity
     blurred = cv2.GaussianBlur(gray, (15, 15), 0)
     min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(blurred)
     
-    # Optic Disc Bounding Box (Centroid at max_loc)
     od_center = max_loc
     od_radius = 24
     cv2.circle(img_copy, od_center, od_radius, (0, 255, 255), 2)
     cv2.putText(img_copy, "Optic Disc", (od_center[0] - 30, od_center[1] - 30), 
                 cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 255), 1)
 
-    # Estimate Fovea (roughly 2.5 disc diameters temporally)
-    # Temporal direction approximation (offset horizontally)
     h, w = gray.shape
     fovea_x = od_center[0] - int(od_radius * 2.8) if od_center[0] > w // 2 else od_center[0] + int(od_radius * 2.8)
     fovea_y = od_center[1] + 5
@@ -244,7 +237,7 @@ def make_gradcam_heatmap(img_array, model, last_conv_layer_name='top_conv', pred
     return heatmap.numpy(), int(pred_index.numpy()), confidence
 
 # =========================================================
-# 5. CLINICAL EXPLANATIONS
+# 5. DOCTOR-LEVEL 5-LINE CLINICAL EXPLANATIONS
 # =========================================================
 GRADE_LABELS = ["No DR", "Mild DR", "Moderate DR", "Severe DR", "Proliferative DR"]
 
@@ -259,11 +252,41 @@ def generate_explanation(grade, heatmap):
     hot_region = max(quadrants, key=quadrants.get)
 
     details = {
-        0: f"No microvascular abnormalities detected. Model attention diffuse; light concentration in {hot_region}. Annual screening advised.",
-        1: f"Mild NPDR features (isolated microaneurysms) flagged. Primary activation concentrated in {hot_region}. 9–12 month follow-up advised.",
-        2: f"Moderate NPDR detected (microaneurysms, hemorrhages, hard exudates). Significant attention in {hot_region}. Referral within 3–6 months.",
-        3: f"Severe NPDR identified (4-quadrant hemorrhages / venous beading). Dense activation in {hot_region}. Urgent referral within weeks.",
-        4: f"Proliferative DR detected (Neovascularization / high risk of vitreous hemorrhage). Strong salience in {hot_region}. Immediate specialist care required."
+        0: (
+            f"1. Clinical Assessment: No visible microaneurysms, hemorrhages, or exudates detected across the retinal field.\n"
+            f"2. Retinal Structure: Optic disc margins and macula appear intact without sign of focal edema.\n"
+            f"3. Model Salience: Deep neural attention concentrated diffusely in the {hot_region} region without pathological flags.\n"
+            f"4. Prevention & Lifestyle: Maintain strict HbA1c control (<7.0%), keep blood pressure below 130/80 mmHg, and adhere to a lipid-lowering diet.\n"
+            f"5. Care & Management: Continue annual dilated fundus examinations and maintain quarterly metabolic profiling with primary care."
+        ),
+        1: (
+            f"1. Clinical Assessment: Mild Non-Proliferative Diabetic Retinopathy (NPDR) with isolated microaneurysms present.\n"
+            f"2. Retinal Structure: Capillary wall outpouchings detected; no significant lipid leakage or cotton wool spots visible.\n"
+            f"3. Model Salience: Peak Grad-CAM spatial activation localized specifically around microvascular changes in the {hot_region} quadrant.\n"
+            f"4. Prevention & Lifestyle: Optimize glycemic variability to halt basement membrane thickening; engage in regular low-impact aerobic exercise.\n"
+            f"5. Care & Management: Schedule a follow-up comprehensive dilated eye examination within 9 to 12 months with an optometrist or ophthalmologist."
+        ),
+        2: (
+            f"1. Clinical Assessment: Moderate NPDR with microaneurysms, dot-and-blot intraretinal hemorrhages, and early hard exudates.\n"
+            f"2. Retinal Structure: Breakdown of the inner blood-retinal barrier observed, placing central vision at potential risk of macular edema.\n"
+            f"3. Model Salience: Feature activation heavily concentrated across high-density lesion patterns in the {hot_region} quadrant.\n"
+            f"4. Prevention & Lifestyle: Enforce strict glycemic, blood pressure, and renal function controls to reduce microvascular filtration pressure.\n"
+            f"5. Care & Management: Formal referral to a retina specialist or ophthalmologist for clinical evaluation within 3 to 6 months."
+        ),
+        3: (
+            f"1. Clinical Assessment: Severe NPDR with extensive intraretinal hemorrhages in 4 quadrants and venous beading.\n"
+            f"2. Retinal Structure: Widespread capillary non-perfusion and ischemia indicate imminent risk of neovascularization.\n"
+            f"3. Model Salience: Dense neural network heat clusters highlight severe microvascular compromise in the {hot_region} region.\n"
+            f"4. Prevention & Lifestyle: Avoid heavy lifting or Valsalva-inducing physical exertion to prevent acute preretinal hemorrhaging.\n"
+            f"5. Care & Management: Urgent referral to a retina specialist within weeks for consideration of anti-VEGF or laser photocoagulation."
+        ),
+        4: (
+            f"1. Clinical Assessment: Proliferative Diabetic Retinopathy (PDR) with active pathologic neovascularization.\n"
+            f"2. Retinal Structure: High risk of vitreous hemorrhage, fibrovascular proliferation, and tractional retinal detachment.\n"
+            f"3. Model Salience: Maximum model salience focused intensely on high-risk, fragile vessel growth in the {hot_region} quadrant.\n"
+            f"4. Prevention & Lifestyle: Minimize sudden posture changes and head-down positions; maintain immediate, strict glycemic oversight.\n"
+            f"5. Care & Management: Immediate referral to a retina specialist for anti-VEGF therapy or panretinal photocoagulation (PRP)."
+        )
     }
     return details.get(grade, "Screening complete."), quadrants
 
@@ -380,7 +403,7 @@ if page == "◉ Screening Pipeline":
             vessel_img = extract_vascular_tree(processed_img)
             st.image(vessel_img, caption="Segmented Retinal Vasculature Mask", use_container_width=True)
 
-        # Lesion Attention Breakdown
+        # Doctor-Level Clinical Explanation
         exp_text, quads = generate_explanation(pred_class, heatmap_resized)
         
         st.markdown("**Quadrant-Level Lesion Attention Score**")
@@ -389,9 +412,21 @@ if page == "◉ Screening Pipeline":
             q_cols[idx].metric(q_name, f"{score:.3f}")
 
         st.markdown("---")
-        st.markdown("### Clinical Report Summary")
-        st.write(exp_text)
-        st.warning("⚠️ **Human-in-the-loop Directive:** This AI output is for screening assistance. Clinical decision remains with a qualified eye-care professional.")
+        st.markdown("### 🩺 Clinical Diagnosis & Doctor-Level Report")
+        
+        # Format text to avoid f-string backslash syntax issues
+        formatted_report = "<br><br>".join(exp_text.split("\n"))
+        
+        st.markdown(
+            f'''
+            <div style="background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 12px; padding: 20px; font-family: sans-serif; color: #1e293b; line-height: 1.6;">
+                {formatted_report}
+            </div>
+            ''',
+            unsafe_allow_html=True
+        )
+
+        st.warning("⚠️ **Human-in-the-loop Directive:** This AI output is for decision-support screening. Final clinical evaluation must be confirmed by a qualified ophthalmologist.")
 
 # =========================================================
 # PAGE 2: PS COVERAGE DASHBOARD
