@@ -479,7 +479,7 @@ elif page == "▥ PS Coverage Dashboard":
     st.title("Problem Statement Requirements & Implementation Matrix")
     st.caption("Transparent audit of implemented features vs target problem statement requirements")
 
-    ps_data = [
+   ps_data = [
         {"Module": "Image Quality Assessment", "Components": "Focus, Illumination, FOV", "Status": "IMPLEMENTED", "Details": "Live Laplacian variance & LAB illumination gate"},
         {"Module": "Adaptive Preprocessing", "Components": "CLAHE, Denoising", "Status": "IMPLEMENTED", "Details": "Adaptive bilateral filtering on borderline quality"},
         {"Module": "DR Severity Grading", "Components": "Grade 0–4 Classification", "Status": "IMPLEMENTED", "Details": "EfficientNetB0 model (`netraai_final.keras`)"},
@@ -487,7 +487,7 @@ elif page == "▥ PS Coverage Dashboard":
         {"Module": "Retinal Structures", "Components": "Optic Disc, Fovea, Vasculature", "Status": "IMPLEMENTED (PHASE 2)", "Details": "Live intensity localization & vessel mask extraction"},
         {"Module": "Referable DR Evaluation", "Components": "Sensitivity >90%, Specificity >85%", "Status": "VALIDATED (PHASE 3)", "Details": "Passed targets: Sensitivity 95.45%, Specificity 92.54%"},
         {"Module": "Capacity Simulation", "Components": "District 100k+ Patients/Year", "Status": "IMPLEMENTED", "Details": "Interactive Python capacity & bottleneck simulator"},
-        {"Module": "Simulink Artifact", "Components": "MATLAB / Simulink Model", "Status": "NOT YET IMPLEMENTED", "Details": "To be built separately in MATLAB environment"}
+        {"Module": "Simulink Artifact", "Components": "MATLAB / Simulink Model", "Status": "IMPLEMENTED (PHASE 4)", "Details": "Built & executable via `matlab/run_simulation.m`"}
     ]
 
     if PANDAS_AVAILABLE:
