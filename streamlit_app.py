@@ -479,7 +479,7 @@ elif page == "▥ PS Coverage Dashboard":
     st.title("Problem Statement Requirements & Implementation Matrix")
     st.caption("Transparent audit of implemented features vs target problem statement requirements")
 
-   ps_data = [
+    ps_data = [
         {"Module": "Image Quality Assessment", "Components": "Focus, Illumination, FOV", "Status": "IMPLEMENTED", "Details": "Live Laplacian variance & LAB illumination gate"},
         {"Module": "Adaptive Preprocessing", "Components": "CLAHE, Denoising", "Status": "IMPLEMENTED", "Details": "Adaptive bilateral filtering on borderline quality"},
         {"Module": "DR Severity Grading", "Components": "Grade 0–4 Classification", "Status": "IMPLEMENTED", "Details": "EfficientNetB0 model (`netraai_final.keras`)"},
