@@ -1,7 +1,6 @@
 # ============================================================
-# NETRA AI — COMPLETE STREAMLIT APPLICATION
-# Patient Registration + Simulated Government-ID Verification
-# + OTP + Patient Record + DR Screening + Grad-CAM
+# NETRA AI — STREAMLIT APPLICATION
+# Full replacement version
 # ============================================================
 
 import streamlit as st
@@ -9,12 +8,11 @@ import tensorflow as tf
 import numpy as np
 import cv2
 from PIL import Image
-import io
 import sqlite3
 import uuid
-import random
-import re
-from datetime import datetime, timedelta
+import hashlib
+from datetime import datetime, date, timedelta
+
 
 # ============================================================
 # OPTIONAL IMPORTS
@@ -26,14 +24,19 @@ try:
 except ImportError:
     PANDAS_AVAILABLE = False
 
+
 try:
     import matplotlib.pyplot as plt
     MATPLOTLIB_AVAILABLE = True
 except ImportError:
     MATPLOTLIB_AVAILABLE = False
 
+
 try:
-    from metrics import calculate_referable_dr_metrics, generate_validation_plots
+    from metrics import (
+        calculate_referable_dr_metrics,
+        generate_validation_plots
+    )
     METRICS_MODULE_AVAILABLE = True
 except ImportError:
     METRICS_MODULE_AVAILABLE = False
@@ -44,7 +47,7 @@ except ImportError:
 # ============================================================
 
 st.set_page_config(
-    page_title="NETRA AI — DR Screening",
+    page_title="NETRA AI — DR Screening & Pipeline",
     page_icon="👁️",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -58,6 +61,10 @@ st.set_page_config(
 st.markdown("""
 <style>
 
+/* =========================================================
+   APPLICATION
+========================================================= */
+
 .stApp {
     background-color: #f7fafb;
 }
@@ -68,10 +75,20 @@ st.markdown("""
     padding-bottom: 3rem;
 }
 
+
+/* =========================================================
+   SIDEBAR
+========================================================= */
+
 section[data-testid="stSidebar"] {
     background-color: #ffffff;
     border-right: 1px solid #e2e8f0;
 }
+
+
+/* =========================================================
+   TYPOGRAPHY
+========================================================= */
 
 h1 {
     font-size: 1.8rem !important;
@@ -91,11 +108,38 @@ h3 {
     color: #123b4a !important;
 }
 
-p, label, li, span {
+p,
+label,
+li,
+span {
     font-size: 0.95rem !important;
     line-height: 1.5 !important;
     color: #334155;
 }
+
+
+/* =========================================================
+   BUTTONS
+========================================================= */
+
+.stButton > button {
+    border-radius: 10px !important;
+    border: 1px solid #0f766e !important;
+    background-color: #0f766e !important;
+    color: #ffffff !important;
+    font-weight: 600 !important;
+    width: 100%;
+}
+
+.stButton > button:hover {
+    background-color: #115e59 !important;
+    border-color: #115e59 !important;
+}
+
+
+/* =========================================================
+   STATUS BADGES
+========================================================= */
 
 .status-badge {
     display: inline-block;
@@ -120,23 +164,25 @@ p, label, li, span {
     color: #991b1b;
 }
 
-.stButton > button {
-    border-radius: 10px;
-    border: 1px solid #0f766e !important;
-    background-color: #0f766e !important;
-    color: #ffffff !important;
-    font-weight: 600;
-    width: 100%;
-    min-height: 45px;
+
+/* =========================================================
+   NETRA REGISTRATION
+========================================================= */
+
+.netra-title {
+    font-size: 56px;
+    line-height: 1.05;
+    font-weight: 800;
+    color: #172d2e;
+    letter-spacing: -1.5px;
+    margin-bottom: 18px;
 }
 
-.stButton > button:hover {
-    background-color: #115e59 !important;
-    border-color: #115e59 !important;
-}
-
-.registration-wrapper {
-    padding: 10px 0 30px 0;
+.netra-subtitle {
+    font-size: 22px;
+    color: #587174;
+    line-height: 1.5;
+    margin-bottom: 42px;
 }
 
 .registration-pill {
@@ -151,29 +197,24 @@ p, label, li, span {
     margin-bottom: 12px;
 }
 
-.registration-title {
-    font-size: 56px;
-    line-height: 1.05;
-    font-weight: 800;
-    color: #172d2e;
-    margin: 0 0 18px 0;
-    letter-spacing: -1.5px;
-}
 
-.registration-subtitle {
-    font-size: 22px;
-    color: #587174;
-    margin-bottom: 42px;
-    line-height: 1.5;
-}
+/* =========================================================
+   PATIENT CARDS
+========================================================= */
 
 .patient-card {
     background: #ffffff;
     border: 1px solid #dce8e7;
     border-radius: 30px;
     padding: 42px 40px 38px 40px;
-    min-height: 360px;
+    min-height: 390px;
     box-shadow: 0 10px 35px rgba(30, 70, 70, 0.06);
+    box-sizing: border-box;
+}
+
+.patient-card:hover {
+    border-color: #178c88;
+    box-shadow: 0 15px 40px rgba(23, 140, 136, 0.10);
 }
 
 .patient-icon {
@@ -186,6 +227,7 @@ p, label, li, span {
     justify-content: center;
     color: #087b78;
     font-size: 35px;
+    font-weight: 700;
     margin-bottom: 30px;
 }
 
@@ -200,11 +242,16 @@ p, label, li, span {
     color: #647577;
     font-size: 20px;
     line-height: 1.55;
-    margin-bottom: 30px;
+    min-height: 100px;
 }
 
+
+/* =========================================================
+   PROTOTYPE NOTICE
+========================================================= */
+
 .prototype-box {
-    margin-top: 22px;
+    margin-top: 24px;
     padding: 19px 22px;
     border: 1px solid #d8e8e7;
     border-radius: 18px;
@@ -214,50 +261,45 @@ p, label, li, span {
     line-height: 1.5;
 }
 
-.patient-header {
-    background: #ffffff;
-    border: 1px solid #dce8e7;
-    border-radius: 18px;
-    padding: 22px 25px;
-    margin-bottom: 25px;
+.prototype-box strong {
+    color: #31595b;
 }
 
-.netra-id-box {
-    background: #eaf5f4;
-    border-radius: 12px;
-    padding: 12px 18px;
+
+/* =========================================================
+   PATIENT PROFILE
+========================================================= */
+
+.profile-card {
+    background: #ffffff;
+    border: 1px solid #dce8e7;
+    border-radius: 20px;
+    padding: 22px;
+}
+
+.netra-id {
     color: #087b78;
-    font-weight: 700;
-}
-
-.info-card {
-    background: #ffffff;
-    border: 1px solid #dce8e7;
-    border-radius: 18px;
-    padding: 25px;
-    margin-bottom: 20px;
-}
-
-.big-number {
-    font-size: 34px;
     font-weight: 800;
-    color: #087b78;
+    letter-spacing: 0.4px;
 }
 
-.otp-box {
-    background: #eef7ff;
-    border: 1px solid #b8d9f5;
-    border-radius: 14px;
-    padding: 18px;
-    margin: 15px 0;
+
+/* =========================================================
+   INPUTS
+========================================================= */
+
+div[data-baseweb="input"] input,
+div[data-baseweb="textarea"] textarea {
+    border-radius: 10px;
 }
 
-.demo-id-box {
-    background: #fff9e8;
-    border: 1px solid #f0d78a;
-    border-radius: 14px;
-    padding: 18px;
-    margin: 15px 0;
+
+/* =========================================================
+   DIVIDER
+========================================================= */
+
+hr {
+    border-color: #dce8e7 !important;
 }
 
 </style>
@@ -265,72 +307,88 @@ p, label, li, span {
 
 
 # ============================================================
-# SESSION STATE
+# DATABASE
 # ============================================================
 
-DEFAULT_STATE = {
-    "authenticated": False,
-    "user": "admin",
-    "patient_mode": None,
-    "screening_step": "dashboard",
-    "patient": None,
-    "otp": None,
-    "otp_verified": False,
-    "generated_netra_id": None,
-    "generated_patient": None,
-    "current_page": "◉ Screening Pipeline"
-}
-
-for key, value in DEFAULT_STATE.items():
-    if key not in st.session_state:
-        st.session_state[key] = value
-
-
-# ============================================================
-# SQLITE DATABASE
-# ============================================================
-
-def get_db():
-    return sqlite3.connect("netra_history.db")
+DB_PATH = "netra_history.db"
 
 
 def init_db():
 
-    conn = get_db()
-    c = conn.cursor()
+    conn = sqlite3.connect(DB_PATH)
 
-    c.execute("""
+    cursor = conn.cursor()
+
+    # --------------------------------------------------------
+    # Screening history
+    # --------------------------------------------------------
+
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS screening_history (
+
             unique_id TEXT PRIMARY KEY,
+
             timestamp TEXT,
+
             patient_id TEXT,
+
             patient_name TEXT,
+
             predicted_grade INTEGER,
+
             grade_label TEXT,
+
             confidence REAL,
+
             hotspot_quadrant TEXT,
+
             focus_score REAL,
+
             illum_score REAL,
+
             fov_score REAL
+
         )
     """)
 
-    c.execute("""
+
+    # --------------------------------------------------------
+    # Patient registry
+    # --------------------------------------------------------
+
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS patients (
+
             netra_id TEXT PRIMARY KEY,
-            patient_name TEXT,
+
+            gov_id_type TEXT,
+
+            gov_id_ref TEXT UNIQUE,
+
+            name TEXT,
+
             father_name TEXT,
+
             mobile TEXT,
+
             dob TEXT,
+
             address TEXT,
-            id_type TEXT,
-            id_reference TEXT,
+
             created_at TEXT,
-            last_screened TEXT
+
+            last_screened TEXT,
+
+            current_grade INTEGER,
+
+            followup_due TEXT
+
         )
     """)
+
 
     conn.commit()
+
     conn.close()
 
 
@@ -338,134 +396,7 @@ init_db()
 
 
 # ============================================================
-# PATIENT DATABASE FUNCTIONS
-# ============================================================
-
-def create_netra_id():
-    return f"NETRA-{uuid.uuid4().hex[:8].upper()}"
-
-
-def save_patient(patient):
-
-    conn = get_db()
-    c = conn.cursor()
-
-    c.execute("""
-        INSERT OR REPLACE INTO patients
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        patient["netra_id"],
-        patient["name"],
-        patient["father_name"],
-        patient["mobile"],
-        patient["dob"],
-        patient["address"],
-        patient["id_type"],
-        patient["id_reference"],
-        datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        patient.get("last_screened", "")
-    ))
-
-    conn.commit()
-    conn.close()
-
-
-def find_patient_by_id(id_type, id_reference):
-
-    conn = get_db()
-    c = conn.cursor()
-
-    row = c.execute("""
-        SELECT
-            netra_id,
-            patient_name,
-            father_name,
-            mobile,
-            dob,
-            address,
-            id_type,
-            id_reference,
-            last_screened
-        FROM patients
-        WHERE id_type = ? AND id_reference = ?
-    """, (id_type, id_reference)).fetchone()
-
-    conn.close()
-
-    if not row:
-        return None
-
-    return {
-        "netra_id": row[0],
-        "name": row[1],
-        "father_name": row[2],
-        "mobile": row[3],
-        "dob": row[4],
-        "address": row[5],
-        "id_type": row[6],
-        "id_reference": row[7],
-        "last_screened": row[8]
-    }
-
-
-def get_patient_by_netra(netra_id):
-
-    conn = get_db()
-    c = conn.cursor()
-
-    row = c.execute("""
-        SELECT
-            netra_id,
-            patient_name,
-            father_name,
-            mobile,
-            dob,
-            address,
-            id_type,
-            id_reference,
-            last_screened
-        FROM patients
-        WHERE netra_id = ?
-    """, (netra_id,)).fetchone()
-
-    conn.close()
-
-    if not row:
-        return None
-
-    return {
-        "netra_id": row[0],
-        "name": row[1],
-        "father_name": row[2],
-        "mobile": row[3],
-        "dob": row[4],
-        "address": row[5],
-        "id_type": row[6],
-        "id_reference": row[7],
-        "last_screened": row[8]
-    }
-
-
-def update_last_screened(netra_id):
-
-    conn = get_db()
-    c = conn.cursor()
-
-    c.execute("""
-        UPDATE patients
-        SET last_screened = ?
-        WHERE netra_id = ?
-    """, (
-        datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        netra_id
-    ))
-
-    conn.commit()
-    conn.close()
-
-
-# ============================================================
-# SCREENING DATABASE
+# DATABASE — SCREENING
 # ============================================================
 
 def save_screening_to_db(
@@ -480,48 +411,111 @@ def save_screening_to_db(
     fov
 ):
 
-    conn = get_db()
-    c = conn.cursor()
+    conn = sqlite3.connect(DB_PATH)
 
-    unique_id = f"NETRA-{uuid.uuid4().hex[:8].upper()}"
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    cursor = conn.cursor()
 
-    c.execute("""
+    unique_id = (
+        f"NETRA-{uuid.uuid4().hex[:8].upper()}"
+    )
+
+    timestamp = datetime.now().strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
+
+
+    cursor.execute(
+        """
         INSERT INTO screening_history
+
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        unique_id,
-        timestamp,
-        patient_id,
-        patient_name,
-        grade,
-        grade_label,
-        confidence,
-        hot_quad,
-        focus,
-        illum,
-        fov
-    ))
+
+        """,
+
+        (
+            unique_id,
+            timestamp,
+            patient_id,
+            patient_name,
+            grade,
+            grade_label,
+            confidence,
+            hot_quad,
+            focus,
+            illum,
+            fov
+        )
+    )
+
+
+    # --------------------------------------------------------
+    # Follow-up schedule
+    # --------------------------------------------------------
+
+    followup_days = {
+        0: 90,
+        1: 60,
+        2: 30,
+        3: 15,
+        4: 15
+    }
+
+    days = followup_days.get(
+        int(grade),
+        90
+    )
+
+    followup_due = (
+        datetime.now() +
+        timedelta(days=days)
+    ).strftime("%Y-%m-%d")
+
+
+    cursor.execute(
+        """
+        UPDATE patients
+
+        SET
+            last_screened = ?,
+            current_grade = ?,
+            followup_due = ?
+
+        WHERE netra_id = ?
+
+        """,
+
+        (
+            timestamp,
+            int(grade),
+            followup_due,
+            patient_id
+        )
+    )
+
 
     conn.commit()
-    conn.close()
 
-    if patient_id:
-        update_last_screened(patient_id)
+    conn.close()
 
     return unique_id
 
 
+# ============================================================
+# DATABASE — HISTORY
+# ============================================================
+
 def get_all_history():
 
-    conn = get_db()
+    conn = sqlite3.connect(DB_PATH)
 
     if PANDAS_AVAILABLE:
 
-        df = pd.read_sql_query(
+        dataframe = pd.read_sql_query(
             """
             SELECT *
+
             FROM screening_history
+
             ORDER BY timestamp DESC
             """,
             conn
@@ -529,188 +523,358 @@ def get_all_history():
 
         conn.close()
 
-        return df
+        return dataframe
 
-    c = conn.cursor()
 
-    data = c.execute("""
+    rows = conn.execute(
+        """
         SELECT *
+
         FROM screening_history
+
         ORDER BY timestamp DESC
-    """).fetchall()
+        """
+    ).fetchall()
 
     conn.close()
 
-    return data
+    return rows
 
 
 # ============================================================
-# SIMULATED GOVERNMENT-ID VALIDATION
+# DATABASE — PATIENT
 # ============================================================
 
-def validate_id_format(id_type, value):
+def get_patient(
+    netra_id=None,
+    gov_id_ref=None
+):
 
-    value = value.strip().upper().replace(" ", "")
+    conn = sqlite3.connect(DB_PATH)
 
-    if id_type == "Aadhaar":
-        return bool(re.fullmatch(r"\d{12}", value))
+    if netra_id:
 
-    if id_type == "PAN":
-        return bool(re.fullmatch(r"[A-Z]{5}[0-9]{4}[A-Z]", value))
+        row = conn.execute(
+            """
+            SELECT *
 
-    if id_type == "Passport":
-        return bool(re.fullmatch(r"[A-Z][0-9]{7}", value))
+            FROM patients
 
-    if id_type == "Ayushman Bharat Card":
-        return bool(re.fullmatch(r"[A-Z0-9]{9,20}", value))
+            WHERE netra_id = ?
 
-    return False
+            """,
+            (netra_id,)
+        ).fetchone()
+
+    elif gov_id_ref:
+
+        row = conn.execute(
+            """
+            SELECT *
+
+            FROM patients
+
+            WHERE gov_id_ref = ?
+
+            """,
+            (
+                gov_id_ref.strip().upper(),
+            )
+        ).fetchone()
+
+    else:
+
+        row = None
 
 
-def mask_id(id_type, value):
+    conn.close()
 
-    if id_type == "Aadhaar":
-        return "XXXX XXXX " + value[-4:]
-
-    if id_type == "PAN":
-        return value[:2] + "XXXXXX" + value[-2:]
-
-    if id_type == "Passport":
-        return value[:1] + "XXXXXX" + value[-1:]
-
-    return "XXXXXX" + value[-4:]
+    return row
 
 
 # ============================================================
-# SIMULATED PATIENT DETAILS
+# DATABASE — PATIENT DICTIONARY
 # ============================================================
 
-def generate_demo_patient(id_type, id_reference):
+def patient_row_to_dict(row):
 
-    seed = sum(ord(x) for x in id_reference)
-    random.seed(seed)
+    if not row:
+        return None
 
-    first_names = [
-        "Arjun",
-        "Rahul",
-        "Priya",
-        "Neha",
-        "Amit",
-        "Kavya",
-        "Rohan",
-        "Ananya"
+    keys = [
+
+        "netra_id",
+        "gov_id_type",
+        "gov_id_ref",
+        "name",
+        "father_name",
+        "mobile",
+        "dob",
+        "address",
+        "created_at",
+        "last_screened",
+        "current_grade",
+        "followup_due"
+
     ]
 
-    father_names = [
-        "Rajesh Kumar",
-        "Suresh Sharma",
-        "Mahesh Singh",
-        "Vijay Patel",
-        "Ramesh Verma"
-    ]
-
-    cities = [
-        "Jaipur, Rajasthan",
-        "Delhi, India",
-        "Lucknow, Uttar Pradesh",
-        "Bhopal, Madhya Pradesh",
-        "Pune, Maharashtra"
-    ]
-
-    name = random.choice(first_names)
-    father = random.choice(father_names)
-    city = random.choice(cities)
-
-    mobile = f"9{random.randint(100000000, 999999999)}"
-
-    dob = (
-        f"{random.randint(1, 28):02d}-"
-        f"{random.randint(1, 12):02d}-"
-        f"{random.randint(1965, 2002)}"
+    return dict(
+        zip(keys, row)
     )
+
+
+# ============================================================
+# DATABASE — REGISTER PATIENT
+# ============================================================
+
+def register_patient(
+    gov_id_type,
+    gov_id_ref,
+    name,
+    father_name,
+    mobile,
+    dob,
+    address
+):
+
+    gov_id_ref = (
+        gov_id_ref
+        .strip()
+        .upper()
+    )
+
+
+    existing = get_patient(
+        gov_id_ref=gov_id_ref
+    )
+
+
+    if existing:
+
+        return (
+            None,
+            "A patient is already registered with this government-ID reference."
+        )
+
+
+    netra_id = (
+
+        "NTR-"
+        +
+        datetime.now().strftime("%y%m%d")
+        +
+        "-"
+        +
+        uuid.uuid4()
+        .hex[:6]
+        .upper()
+
+    )
+
+
+    now = datetime.now().strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
+
+
+    conn = sqlite3.connect(DB_PATH)
+
+
+    conn.execute(
+        """
+        INSERT INTO patients
+
+        (
+            netra_id,
+            gov_id_type,
+            gov_id_ref,
+            name,
+            father_name,
+            mobile,
+            dob,
+            address,
+            created_at,
+            last_screened,
+            current_grade,
+            followup_due
+        )
+
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+
+        """,
+
+        (
+            netra_id,
+            gov_id_type,
+            gov_id_ref,
+            name,
+            father_name,
+            mobile,
+            dob,
+            address,
+            now,
+            None,
+            None,
+            None
+        )
+    )
+
+
+    conn.commit()
+
+    conn.close()
+
+
+    return (
+        netra_id,
+        None
+    )
+
+
+# ============================================================
+# DATABASE — PATIENT SEARCH
+# ============================================================
+
+def get_patients(search=""):
+
+    conn = sqlite3.connect(DB_PATH)
+
+    query = """
+
+        SELECT
+
+            netra_id,
+            name,
+            mobile,
+            dob,
+            last_screened,
+            current_grade,
+            followup_due
+
+        FROM patients
+
+    """
+
+    parameters = []
+
+
+    if search.strip():
+
+        value = (
+            "%"
+            +
+            search.strip()
+            +
+            "%"
+        )
+
+
+        query += """
+
+            WHERE
+
+                netra_id LIKE ?
+                OR name LIKE ?
+                OR mobile LIKE ?
+                OR gov_id_ref LIKE ?
+
+        """
+
+        parameters = [
+            value,
+            value,
+            value,
+            value
+        ]
+
+
+    query += """
+
+        ORDER BY created_at DESC
+
+    """
+
+
+    rows = conn.execute(
+        query,
+        parameters
+    ).fetchall()
+
+
+    conn.close()
+
+    return rows
+
+
+# ============================================================
+# DATABASE — FOLLOW UPS
+# ============================================================
+
+def get_due_followups():
+
+    today = date.today().isoformat()
+
+    conn = sqlite3.connect(DB_PATH)
+
+
+    rows = conn.execute(
+        """
+
+        SELECT
+
+            netra_id,
+            name,
+            mobile,
+            address,
+            last_screened,
+            current_grade,
+            followup_due
+
+        FROM patients
+
+        WHERE
+
+            followup_due IS NOT NULL
+
+            AND followup_due <= ?
+
+        ORDER BY followup_due ASC
+
+        """,
+
+        (today,)
+    ).fetchall()
+
+
+    conn.close()
+
+    return rows
+
+
+# ============================================================
+# FOLLOW-UP RULE
+# ============================================================
+
+def grade_followup_days(
+    grade
+):
 
     return {
-        "name": name,
-        "father_name": father,
-        "mobile": mobile,
-        "dob": dob,
-        "address": city,
-        "id_type": id_type,
-        "id_reference": id_reference,
-        "netra_id": create_netra_id()
-    }
 
+        0: 90,
+        1: 60,
+        2: 30,
+        3: 15,
+        4: 15
 
-# ============================================================
-# OTP
-# ============================================================
-
-def generate_demo_otp():
-
-    return str(random.randint(100000, 999999))
-
-
-# ============================================================
-# LOGIN AUTHENTICATION
-# ============================================================
-
-if not st.session_state["authenticated"]:
-
-    st.title("👁️ NETRA AI — Clinical Access Portal")
-
-    st.caption(
-        "Secure Authenticated Telemedicine Screening Node"
+    }.get(
+        int(grade),
+        90
     )
 
-    col1, col2, col3 = st.columns([1, 2, 1])
-
-    with col2:
-
-        with st.form("login_form"):
-
-            username = st.text_input(
-                "Username",
-                value="admin"
-            )
-
-            password = st.text_input(
-                "Password",
-                type="password",
-                value="password123"
-            )
-
-            submit = st.form_submit_button(
-                "Log In to Screening Node"
-            )
-
-            if submit:
-
-                if (
-                    username == "admin"
-                    and password == "password123"
-                ):
-
-                    st.session_state["authenticated"] = True
-                    st.session_state["user"] = username
-                    st.session_state["screening_step"] = "dashboard"
-
-                    st.success(
-                        "Authentication successful."
-                    )
-
-                    st.rerun()
-
-                else:
-
-                    st.error(
-                        "Invalid Username or Password."
-                    )
-
-    st.stop()
-
 
 # ============================================================
-# MODEL LOADING
+# MODEL
 # ============================================================
 
 @st.cache_resource
@@ -727,41 +891,47 @@ try:
 
     model_status = True
 
-except Exception as e:
+    model_error = ""
+
+except Exception as error:
 
     model = None
 
     model_status = False
 
-    model_error = str(e)
+    model_error = str(error)
 
 
 # ============================================================
-# IMAGE QUALITY FUNCTIONS
+# IMAGE QUALITY ASSESSMENT
 # ============================================================
 
-def evaluate_image_quality(img_rgb):
+def evaluate_image_quality(
+    img_rgb
+):
 
     gray = cv2.cvtColor(
         img_rgb,
         cv2.COLOR_RGB2GRAY
     )
 
+
     focus_score = cv2.Laplacian(
         gray,
         cv2.CV_64F
     ).var()
+
 
     lab = cv2.cvtColor(
         img_rgb,
         cv2.COLOR_RGB2LAB
     )
 
-    l_channel = lab[:, :, 0]
 
     illumination_score = float(
-        l_channel.mean()
+        lab[:, :, 0].mean()
     )
+
 
     _, mask = cv2.threshold(
         gray,
@@ -770,24 +940,32 @@ def evaluate_image_quality(img_rgb):
         cv2.THRESH_BINARY
     )
 
+
     fov_coverage = (
+
         cv2.countNonZero(mask)
         /
-        (gray.shape[0] * gray.shape[1])
+        (
+            gray.shape[0]
+            *
+            gray.shape[1]
+        )
+
     ) * 100
 
-    is_focus_pass = focus_score >= 15.0
-
-    is_illum_pass = (
-        30.0 <= illumination_score <= 220.0
-    )
-
-    is_fov_pass = fov_coverage >= 35.0
 
     if (
-        is_focus_pass
-        and is_illum_pass
-        and is_fov_pass
+
+        focus_score >= 15
+
+        and
+
+        30 <= illumination_score <= 220
+
+        and
+
+        fov_coverage >= 35
+
     ):
 
         status = "PASS"
@@ -797,17 +975,28 @@ def evaluate_image_quality(img_rgb):
             "Proceeding directly to AI classification."
         )
 
+
     elif (
-        focus_score < 5.0
-        or illumination_score < 15.0
-        or fov_coverage < 20.0
+
+        focus_score < 5
+
+        or
+
+        illumination_score < 15
+
+        or
+
+        fov_coverage < 20
+
     ):
 
         status = "RECAPTURE"
 
         action = (
-            "Unusable image quality. Recapture required."
+            "Unusable image quality. "
+            "Recapture required."
         )
+
 
     else:
 
@@ -815,50 +1004,84 @@ def evaluate_image_quality(img_rgb):
 
         action = (
             "Borderline quality detected. "
-            "Applying adaptive CLAHE & denoising."
+            "Applying adaptive CLAHE and denoising "
+            "before grading."
         )
 
+
     return {
+
         "status": status,
+
         "action": action,
-        "focus_score": round(focus_score, 1),
-        "illumination_score": round(
-            illumination_score,
-            1
-        ),
-        "fov_coverage": round(
-            fov_coverage,
-            1
-        )
+
+        "focus_score":
+            round(
+                focus_score,
+                1
+            ),
+
+        "illumination_score":
+            round(
+                illumination_score,
+                1
+            ),
+
+        "fov_coverage":
+            round(
+                fov_coverage,
+                1
+            )
+
     }
 
 
-def preprocess_standard(img_rgb, size=224):
+# ============================================================
+# PREPROCESSING
+# ============================================================
+
+def preprocess_standard(
+    img_rgb,
+    size=224
+):
 
     resized = cv2.resize(
         img_rgb,
         (size, size)
     )
 
+
     lab = cv2.cvtColor(
         resized,
         cv2.COLOR_RGB2LAB
     )
 
-    l, a, b = cv2.split(lab)
+
+    l, a, b = cv2.split(
+        lab
+    )
+
 
     clahe = cv2.createCLAHE(
         clipLimit=2.0,
         tileGridSize=(8, 8)
     )
 
+
     l = clahe.apply(l)
 
+
     return cv2.cvtColor(
-        cv2.merge((l, a, b)),
+        cv2.merge(
+            (l, a, b)
+        ),
         cv2.COLOR_LAB2RGB
     )
 
+
+# ============================================================
+# ADAPTIVE DENOISING
+# ============================================================
 
 def preprocess_adaptive_denoise(
     img_rgb,
@@ -870,6 +1093,7 @@ def preprocess_adaptive_denoise(
         size=size
     )
 
+
     return cv2.bilateralFilter(
         processed,
         d=5,
@@ -879,32 +1103,39 @@ def preprocess_adaptive_denoise(
 
 
 # ============================================================
-# RETINAL STRUCTURE FUNCTIONS
+# VESSEL EXTRACTION
 # ============================================================
 
-def extract_vascular_tree(img_rgb):
+def extract_vascular_tree(
+    img_rgb
+):
 
     green_ch = img_rgb[:, :, 1]
+
 
     clahe = cv2.createCLAHE(
         clipLimit=3.0,
         tileGridSize=(8, 8)
     )
 
+
     enhanced_g = clahe.apply(
         green_ch
     )
+
 
     kernel = cv2.getStructuringElement(
         cv2.MORPH_ELLIPSE,
         (5, 5)
     )
 
+
     tophat = cv2.morphologyEx(
         enhanced_g,
         cv2.MORPH_TOPHAT,
         kernel
     )
+
 
     _, vessel_mask = cv2.threshold(
         tophat,
@@ -913,11 +1144,16 @@ def extract_vascular_tree(img_rgb):
         cv2.THRESH_BINARY
     )
 
+
     return cv2.cvtColor(
         vessel_mask,
         cv2.COLOR_GRAY2RGB
     )
 
+
+# ============================================================
+# OPTIC DISC / FOVEA
+# ============================================================
 
 def localize_optic_disc_and_fovea(
     img_rgb
@@ -925,10 +1161,12 @@ def localize_optic_disc_and_fovea(
 
     img_copy = img_rgb.copy()
 
+
     gray = cv2.cvtColor(
         img_rgb,
         cv2.COLOR_RGB2GRAY
     )
+
 
     blurred = cv2.GaussianBlur(
         gray,
@@ -936,13 +1174,16 @@ def localize_optic_disc_and_fovea(
         0
     )
 
+
     _, _, _, max_loc = cv2.minMaxLoc(
         blurred
     )
 
+
     od_center = max_loc
 
     od_radius = 24
+
 
     cv2.circle(
         img_copy,
@@ -951,6 +1192,7 @@ def localize_optic_disc_and_fovea(
         (0, 255, 255),
         2
     )
+
 
     cv2.putText(
         img_copy,
@@ -965,37 +1207,50 @@ def localize_optic_disc_and_fovea(
         1
     )
 
+
     h, w = gray.shape
+
 
     if od_center[0] > w // 2:
 
         fovea_x = (
             od_center[0]
-            - int(od_radius * 2.8)
+            -
+            int(od_radius * 2.8)
         )
 
     else:
 
         fovea_x = (
             od_center[0]
-            + int(od_radius * 2.8)
+            +
+            int(od_radius * 2.8)
         )
+
 
     fovea_y = od_center[1] + 5
 
-    fovea_x = np.clip(
-        fovea_x,
-        10,
-        w - 10
+
+    fovea_x = int(
+        np.clip(
+            fovea_x,
+            10,
+            w - 10
+        )
     )
+
 
     cv2.circle(
         img_copy,
-        (fovea_x, fovea_y),
+        (
+            fovea_x,
+            fovea_y
+        ),
         12,
         (255, 0, 0),
         2
     )
+
 
     cv2.putText(
         img_copy,
@@ -1009,6 +1264,7 @@ def localize_optic_disc_and_fovea(
         (255, 0, 0),
         1
     )
+
 
     return img_copy
 
@@ -1032,20 +1288,34 @@ def make_gradcam_heatmap(
                 model.get_layer(
                     last_conv_layer_name
                 ).output,
+
                 model.output
             ]
         )
 
+
     except Exception:
 
         conv_layers = [
+
             layer
+
             for layer in model.layers
+
             if isinstance(
                 layer,
                 tf.keras.layers.Conv2D
             )
+
         ]
+
+
+        if not conv_layers:
+
+            raise RuntimeError(
+                "No convolutional layer was found for Grad-CAM."
+            )
+
 
         grad_model = tf.keras.models.Model(
             [model.inputs],
@@ -1055,11 +1325,13 @@ def make_gradcam_heatmap(
             ]
         )
 
+
     with tf.GradientTape() as tape:
 
         last_conv_layer_output, preds = (
             grad_model(img_array)
         )
+
 
         if pred_index is None:
 
@@ -1067,17 +1339,23 @@ def make_gradcam_heatmap(
                 preds[0]
             )
 
-        class_channel = preds[:, pred_index]
+
+        class_channel = (
+            preds[:, pred_index]
+        )
+
 
     grads = tape.gradient(
         class_channel,
         last_conv_layer_output
     )
 
+
     pooled_grads = tf.reduce_mean(
         grads,
         axis=(0, 1, 2)
     )
+
 
     heatmap = (
         last_conv_layer_output[0]
@@ -1085,28 +1363,38 @@ def make_gradcam_heatmap(
         pooled_grads[..., tf.newaxis]
     )
 
+
     heatmap = tf.squeeze(
         heatmap
     )
+
 
     heatmap = tf.maximum(
         heatmap,
         0
     )
 
+
     max_val = tf.math.reduce_max(
         heatmap
     )
 
-    if float(max_val.numpy()) > 0:
+
+    if float(
+        max_val.numpy()
+    ) > 0:
 
         heatmap /= max_val
 
+
     confidence = float(
+
         tf.nn.softmax(
             preds[0]
         )[pred_index].numpy()
+
     )
+
 
     return (
         heatmap.numpy(),
@@ -1116,15 +1404,17 @@ def make_gradcam_heatmap(
 
 
 # ============================================================
-# DR GRADES
+# GRADE LABELS
 # ============================================================
 
 GRADE_LABELS = [
+
     "No DR",
     "Mild DR",
     "Moderate DR",
     "Severe DR",
     "Proliferative DR"
+
 ]
 
 
@@ -1139,119 +1429,105 @@ def generate_explanation(
 
     h, w = heatmap.shape
 
+
     quadrants = {
 
         "Superior-Nasal":
             heatmap[
-                :h//2,
-                :w//2
+                :h // 2,
+                :w // 2
             ].mean(),
 
         "Superior-Temporal":
             heatmap[
-                :h//2,
-                w//2:
+                :h // 2,
+                w // 2:
             ].mean(),
 
         "Inferior-Nasal":
             heatmap[
-                h//2:,
-                :w//2
+                h // 2:,
+                :w // 2
             ].mean(),
 
         "Inferior-Temporal":
             heatmap[
-                h//2:,
-                w//2:
+                h // 2:,
+                w // 2:
             ].mean()
+
     }
+
 
     hot_region = max(
         quadrants,
         key=quadrants.get
     )
 
+
     details = {
 
         0:
         f"""
-1. Screening Assessment:
-No obvious DR-related pattern was identified by the prototype.
+1. Screening interpretation: No DR pattern was assigned by the model.
 
-2. Model Salience:
-Attention was concentrated in {hot_region}.
+2. Model salience: Attention concentrated diffusely in {hot_region}.
 
-3. Follow-up:
-Routine screening interval should be determined by a qualified clinician.
+3. Prevention: Maintain diabetes and blood-pressure control.
 
-4. Safety:
-This is an AI-assisted screening output and not a diagnosis.
+4. Follow-up: Prototype schedule = 90 days.
 """,
 
         1:
         f"""
-1. Screening Assessment:
-The prototype classified the image as Mild DR.
+1. Screening interpretation: Mild DR pattern assigned by the model.
 
-2. Model Salience:
-Attention was concentrated in {hot_region}.
+2. Model salience: Peak activation around {hot_region}.
 
-3. Follow-up:
-Clinical follow-up should be determined by a qualified healthcare professional.
+3. Prevention: Maintain glycemic and blood-pressure control.
 
-4. Safety:
-The AI result should be reviewed by a qualified clinician.
+4. Follow-up: Prototype schedule = 60 days.
 """,
 
         2:
         f"""
-1. Screening Assessment:
-The prototype classified the image as Moderate DR.
+1. Screening interpretation: Moderate DR pattern assigned by the model.
 
-2. Model Salience:
-Attention was concentrated in {hot_region}.
+2. Model salience: Concentrated activation in {hot_region}.
 
-3. Follow-up:
-Clinical referral should be determined by a qualified healthcare professional.
+3. Prevention: Maintain strict glycemic and blood-pressure control.
 
-4. Safety:
-The AI result should not replace clinical examination.
+4. Follow-up: Prototype schedule = 30 days.
 """,
 
         3:
         f"""
-1. Screening Assessment:
-The prototype classified the image as Severe DR.
+1. Screening interpretation: Severe DR pattern assigned by the model.
 
-2. Model Salience:
-High attention was concentrated in {hot_region}.
+2. Model salience: High activation in {hot_region}.
 
-3. Follow-up:
-Prompt clinical assessment is recommended.
+3. Care: Prompt ophthalmic review is recommended.
 
-4. Safety:
-The AI result should not replace professional diagnosis.
+4. Follow-up: Prototype schedule = 15 days.
 """,
 
         4:
         f"""
-1. Screening Assessment:
-The prototype classified the image as Proliferative DR.
+1. Screening interpretation: Proliferative DR pattern assigned by the model.
 
-2. Model Salience:
-Maximum attention was concentrated in {hot_region}.
+2. Model salience: High activation in {hot_region}.
 
-3. Follow-up:
-Immediate professional clinical assessment is recommended.
+3. Care: Urgent ophthalmic review is recommended.
 
-4. Safety:
-This prototype output is not a substitute for diagnosis.
+4. Follow-up: Prototype schedule = 15 days.
 """
+
     }
+
 
     return (
         details.get(
-            grade,
+            int(grade),
             "Screening complete."
         ),
         quadrants
@@ -1259,103 +1535,170 @@ This prototype output is not a substitute for diagnosis.
 
 
 # ============================================================
-# FOLLOW-UP CALCULATION
+# DEMO ID PROFILE
 # ============================================================
 
-def followup_message(grade):
+def demo_patient_from_id(
+    id_type,
+    id_ref
+):
 
-    if grade == 0:
-        return (
-            "Suggested prototype follow-up: "
-            "3 months"
-        )
-
-    if grade == 1:
-        return (
-            "Suggested prototype follow-up: "
-            "2 months"
-        )
-
-    if grade == 2:
-        return (
-            "Suggested prototype follow-up: "
-            "1 month"
-        )
-
-    return (
-        "Priority clinical consultation recommended. "
-        "Prototype follow-up reminder: 15 days."
+    clean = (
+        id_ref
+        .strip()
+        .upper()
     )
 
 
+    digest = hashlib.sha256(
+        clean.encode()
+    ).hexdigest()
+
+
+    names = [
+
+        "Aarav Sharma",
+        "Priya Verma",
+        "Rohan Singh",
+        "Ananya Gupta"
+
+    ]
+
+
+    fathers = [
+
+        "Rajesh Sharma",
+        "Suresh Verma",
+        "Mahesh Singh",
+        "Amit Gupta"
+
+    ]
+
+
+    index = (
+        int(
+            digest[:4],
+            16
+        )
+        %
+        len(names)
+    )
+
+
+    mobile = (
+
+        "98"
+        +
+        str(
+            int(
+                digest[4:12],
+                16
+            )
+            %
+            100000000
+        ).zfill(8)
+
+    )
+
+
+    dob = (
+
+        f"{1970 + int(digest[12:14],16) % 35:04d}"
+        f"-{1 + int(digest[14:16],16) % 12:02d}"
+        f"-{1 + int(digest[16:18],16) % 28:02d}"
+
+    )
+
+
+    return {
+
+        "name":
+            names[index],
+
+        "father_name":
+            fathers[index],
+
+        "mobile":
+            mobile,
+
+        "dob":
+            dob,
+
+        "address":
+            "Prototype Rural Screening Centre",
+
+        "id_type":
+            id_type,
+
+        "id_ref":
+            clean
+
+    }
+
+
 # ============================================================
-# SIDEBAR
+# PATIENT PROFILE
 # ============================================================
 
-with st.sidebar:
+def show_patient_profile(
+    patient
+):
 
     st.markdown(
-        """
-        <div style="
-            font-size:28px;
-            font-weight:900;
-            color:#087b78;
-            letter-spacing:-0.5px;
-            margin-bottom:5px;">
-            NETRA AI
-        </div>
-        """,
-        unsafe_allow_html=True
+        "### Verified Patient"
     )
 
-    st.caption(
-        f"Operator: `{st.session_state.get('user', 'admin')}`"
-    )
 
-    if st.button(
-        "Log Out",
-        key="logout_button"
-    ):
+    c1, c2, c3, c4 = st.columns(4)
 
-        st.session_state["authenticated"] = False
 
-        st.rerun()
-
-    st.divider()
-
-    page = st.radio(
-        "Navigate",
-        [
-            "◉ Screening Pipeline",
-            "📜 Screening History",
-            "📊 Validation Metrics",
-            "▥ PS Coverage Dashboard",
-            "⚡ District Capacity Simulator"
-        ],
-        index=0
-    )
-
-    st.divider()
-
-    st.write(
-        "**Model:** EfficientNetB0"
-    )
-
-    st.write(
-        "**Database:** SQLite (`netra_history.db`)"
-    )
-
-    if model_status:
-
-        st.success(
-            "● Keras Model Loaded"
+    c1.metric(
+        "Name",
+        patient.get(
+            "name",
+            "—"
         )
+    )
 
-    else:
 
-        st.error(
-            "● Model Unavailable"
+    c2.metric(
+        "NETRA ID",
+        patient.get(
+            "netra_id",
+            "—"
         )
+    )
+
+
+    c3.metric(
+        "Mobile",
+        patient.get(
+            "mobile",
+            "—"
+        )
+    )
+
+
+    c4.metric(
+        "DOB",
+        patient.get(
+            "dob",
+            "—"
+        )
+    )
+
+
+    st.info(
+
+        f"""
+**Father / Guardian:** {patient.get("father_name", "—")}
+
+**Address:** {patient.get("address", "—")}
+
+**Identity reference:** {patient.get("gov_id_type", "—")} • {patient.get("gov_id_ref", "—")}
+"""
+
+    )
 
 
 # ============================================================
@@ -1365,40 +1708,90 @@ with st.sidebar:
 def patient_registration_screen():
 
     st.markdown(
-        '<div class="registration-wrapper">',
+        '<div class="registration-pill">PATIENT REGISTRATION</div>',
         unsafe_allow_html=True
     )
 
+
     st.markdown(
-        '<div class="registration-pill">'
-        'PATIENT REGISTRATION'
-        '</div>',
+        '<div class="netra-title">Who is being screened?</div>',
         unsafe_allow_html=True
     )
 
+
     st.markdown(
-        '<div class="registration-title">'
-        'Who is being screened?'
-        '</div>',
+        """
+        <div class="netra-subtitle">
+        Link the screening to a persistent NETRA patient record
+        before analysing the retinal image.
+        </div>
+        """,
         unsafe_allow_html=True
     )
 
-    st.markdown(
-        '<div class="registration-subtitle">'
-        'Link the screening to a persistent NETRA patient record '
-        'before analysing the retinal image.'
-        '</div>',
-        unsafe_allow_html=True
-    )
+
+    # --------------------------------------------------------
+    # If patient is already verified
+    # --------------------------------------------------------
+
+    if (
+
+        st.session_state.get(
+            "patient_verified"
+        )
+
+        and
+
+        st.session_state.get(
+            "patient"
+        )
+
+    ):
+
+        patient = st.session_state[
+            "patient"
+        ]
+
+
+        show_patient_profile(
+            patient
+        )
+
+
+        if st.button(
+            "Continue to Retinal Screening →",
+            key="continue_to_screening"
+        ):
+
+            st.session_state[
+                "screening_unlocked"
+            ] = True
+
+
+            st.session_state[
+                "screening_step"
+            ] = "upload"
+
+
+            st.rerun()
+
+
+        return
+
+
+    # --------------------------------------------------------
+    # Two cards
+    # --------------------------------------------------------
 
     col1, col2 = st.columns(
         2,
         gap="large"
     )
 
-    # --------------------------------------------------------
+
+    # ========================================================
     # EXISTING PATIENT
-    # --------------------------------------------------------
+    # ========================================================
 
     with col1:
 
@@ -1416,8 +1809,7 @@ def patient_registration_screen():
 
                 <div class="patient-card-description">
                     Find an existing NETRA patient using their
-                    NETRA ID or a registered government-ID
-                    reference.
+                    NETRA ID or registered government-ID reference.
                 </div>
 
             </div>
@@ -1425,8 +1817,9 @@ def patient_registration_screen():
             unsafe_allow_html=True
         )
 
+
         if st.button(
-            "Continue as Existing Patient  →",
+            "Continue as Existing Patient →",
             key="existing_patient_btn",
             use_container_width=True
         ):
@@ -1435,15 +1828,18 @@ def patient_registration_screen():
                 "patient_mode"
             ] = "existing"
 
+
             st.session_state[
-                "screening_step"
-            ] = "verification"
+                "registration_stage"
+            ] = "id"
+
 
             st.rerun()
 
-    # --------------------------------------------------------
+
+    # ========================================================
     # NEW PATIENT
-    # --------------------------------------------------------
+    # ========================================================
 
     with col2:
 
@@ -1461,8 +1857,7 @@ def patient_registration_screen():
 
                 <div class="patient-card-description">
                     Create a NETRA ID, link the prototype
-                    identity record, then continue to the
-                    screening workflow.
+                    identity record, then continue to retinal screening.
                 </div>
 
             </div>
@@ -1470,8 +1865,9 @@ def patient_registration_screen():
             unsafe_allow_html=True
         )
 
+
         if st.button(
-            "Register New Patient  →",
+            "Register New Patient →",
             key="new_patient_btn",
             use_container_width=True
         ):
@@ -1480,839 +1876,756 @@ def patient_registration_screen():
                 "patient_mode"
             ] = "new"
 
+
             st.session_state[
-                "screening_step"
-            ] = "registration"
+                "registration_stage"
+            ] = "id"
+
 
             st.rerun()
+
+
+    # ========================================================
+    # NOTICE
+    # ========================================================
 
     st.markdown(
         """
         <div class="prototype-box">
 
-        <strong>Prototype verification:</strong>
-        Government-ID verification and OTP are simulated
-        locally for the SIH demonstration.
-        No real UIDAI, Passport, PAN, Ayushman Bharat or
-        government API is accessed.
+            <strong>Prototype verification:</strong>
+
+            Government-ID lookup and OTP are simulated locally
+            for the SIH demonstration.
+
+            No real UIDAI, government database, or production
+            OTP service is accessed.
 
         </div>
         """,
         unsafe_allow_html=True
     )
 
-    st.markdown(
-        "</div>",
-        unsafe_allow_html=True
-    )
-
 
 # ============================================================
-# ID VERIFICATION SCREEN
+# REGISTRATION WORKFLOW
 # ============================================================
 
-def identity_verification_screen():
+def registration_workflow():
+
+    mode = st.session_state.get(
+        "patient_mode",
+        "existing"
+    )
+
+
+    stage = st.session_state.get(
+        "registration_stage",
+        "id"
+    )
+
 
     st.markdown(
-        "## Patient Identity Verification"
+        "### Identity Verification"
     )
 
-    st.caption(
-        "Select an identity document and enter its reference."
-    )
 
-    st.info(
-        "Prototype mode: the ID is checked only against "
-        "a local format/record. No government database is queried."
-    )
+    if mode == "new":
+
+        st.caption(
+            "New patient registration"
+        )
+
+    else:
+
+        st.caption(
+            "Existing patient lookup"
+        )
+
+
+    # --------------------------------------------------------
+    # ID TYPE
+    # --------------------------------------------------------
 
     id_type = st.selectbox(
-        "Government ID Type",
+
+        "Government ID reference type",
+
         [
+
             "Aadhaar",
             "PAN",
             "Passport",
-            "Ayushman Bharat Card"
+            "Ayushman Bharat / PM-JAY",
+            "Other government ID"
+
         ],
-        key="identity_type"
+
+        key="gov_id_type"
+
     )
 
-    placeholders = {
-        "Aadhaar": "Example: 123456789012",
-        "PAN": "Example: ABCDE1234F",
-        "Passport": "Example: A1234567",
-        "Ayushman Bharat Card":
-            "Example: ABH123456789"
-    }
 
-    id_value = st.text_input(
-        f"{id_type} Number",
-        placeholder=placeholders[id_type],
-        key="identity_reference"
+    # --------------------------------------------------------
+    # ID NUMBER
+    # --------------------------------------------------------
+
+    id_ref = st.text_input(
+
+        "Government ID number / reference",
+
+        placeholder="Enter demo reference",
+
+        key="gov_id_ref"
+
     )
 
-    c1, c2 = st.columns(2)
 
-    with c1:
+    # ========================================================
+    # STEP 1 — ID
+    # ========================================================
+
+    if stage == "id":
 
         if st.button(
-            "Verify Identity →",
-            key="verify_identity"
+            "Verify ID & Send OTP",
+            key="send_demo_otp"
         ):
 
-            clean_value = (
-                id_value
-                .strip()
-                .upper()
-                .replace(" ", "")
-            )
-
-            if not clean_value:
+            if not id_ref.strip():
 
                 st.error(
-                    "Please enter the ID reference."
-                )
-
-            elif not validate_id_format(
-                id_type,
-                clean_value
-            ):
-
-                st.error(
-                    "ID not found — invalid ID format."
+                    "Enter an ID reference first."
                 )
 
             else:
 
-                existing = find_patient_by_id(
-                    id_type,
-                    clean_value
+                existing = get_patient(
+                    gov_id_ref=id_ref
                 )
 
-                if existing:
-
-                    st.session_state[
-                        "generated_patient"
-                    ] = existing
-
-                    st.session_state[
-                        "screening_step"
-                    ] = "otp"
-
-                    st.session_state[
-                        "otp"
-                    ] = generate_demo_otp()
-
-                    st.session_state[
-                        "otp_verified"
-                    ] = False
-
-                    st.rerun()
-
-                else:
-
-                    if (
-                        st.session_state[
-                            "patient_mode"
-                        ] == "existing"
-                    ):
-
-                        st.error(
-                            "ID format is valid, but no "
-                            "registered NETRA patient record "
-                            "was found."
-                        )
-
-                    else:
-
-                        patient = (
-                            generate_demo_patient(
-                                id_type,
-                                clean_value
-                            )
-                        )
-
-                        st.session_state[
-                            "generated_patient"
-                        ] = patient
-
-                        st.session_state[
-                            "screening_step"
-                        ] = "otp"
-
-                        st.session_state[
-                            "otp"
-                        ] = generate_demo_otp()
-
-                        st.session_state[
-                            "otp_verified"
-                        ] = False
-
-                        st.rerun()
-
-    with c2:
-
-        if st.button(
-            "← Back",
-            key="identity_back"
-        ):
-
-            st.session_state[
-                "screening_step"
-            ] = "patient_selection"
-
-            st.rerun()
-
-
-# ============================================================
-# OTP SCREEN
-# ============================================================
-
-def otp_screen():
-
-    patient = st.session_state.get(
-        "generated_patient"
-    )
-
-    if not patient:
-
-        st.session_state[
-            "screening_step"
-        ] = "patient_selection"
-
-        st.rerun()
-
-    st.markdown(
-        "## Verify Registered Mobile"
-    )
-
-    st.caption(
-        "A prototype OTP has been generated for the "
-        "mobile number associated with the identity record."
-    )
-
-    masked_mobile = (
-        "XXXXXX"
-        + patient["mobile"][-4:]
-    )
-
-    st.markdown(
-        f"""
-        <div class="info-card">
-
-        <b>Patient</b><br>
-        {patient["name"]}<br><br>
-
-        <b>Registered Mobile</b><br>
-        {masked_mobile}
-
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-    # --------------------------------------------------------
-    # DEMO OTP
-    # --------------------------------------------------------
-
-    st.markdown(
-        f"""
-        <div class="otp-box">
-
-        <b>Prototype OTP</b><br><br>
-
-        <span style="
-            font-size:30px;
-            font-weight:900;
-            letter-spacing:8px;
-            color:#087b78;">
-            {st.session_state["otp"]}
-        </span>
-
-        <br><br>
-
-        This OTP is displayed only because this is a
-        local SIH prototype.
-
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-    entered_otp = st.text_input(
-        "Enter OTP",
-        max_chars=6,
-        key="entered_otp"
-    )
-
-    c1, c2 = st.columns(2)
-
-    with c1:
-
-        if st.button(
-            "Verify OTP →",
-            key="verify_otp"
-        ):
-
-            if (
-                entered_otp.strip()
-                ==
-                st.session_state["otp"]
-            ):
 
                 st.session_state[
-                    "otp_verified"
-                ] = True
+                    "registration_lookup"
+                ] = (
+
+                    patient_row_to_dict(
+                        existing
+                    )
+
+                    if existing
+
+                    else None
+
+                )
+
 
                 st.session_state[
-                    "screening_step"
-                ] = "patient_details"
+                    "registration_demo_person"
+                ] = demo_patient_from_id(
+                    id_type,
+                    id_ref
+                )
+
+
+                # Demo OTP
+                st.session_state[
+                    "registration_otp"
+                ] = "123456"
+
+
+                st.session_state[
+                    "registration_stage"
+                ] = "otp"
+
 
                 st.rerun()
 
-            else:
+
+        return
+
+
+    # ========================================================
+    # DEMO OTP
+    # ========================================================
+
+    demo_person = st.session_state.get(
+        "registration_demo_person"
+    )
+
+
+    if demo_person:
+
+        st.info(
+
+            f"""
+Demo OTP sent to registered mobile
+ending in **{demo_person["mobile"][-4:]}**.
+
+For this prototype use OTP **123456**.
+"""
+
+        )
+
+
+    otp = st.text_input(
+
+        "Enter OTP",
+
+        max_chars=6,
+
+        key="demo_otp"
+
+    )
+
+
+    if st.button(
+        "Verify OTP",
+        key="verify_demo_otp"
+    ):
+
+        if (
+
+            otp
+            !=
+            st.session_state.get(
+                "registration_otp"
+            )
+
+        ):
+
+            st.error(
+                "Invalid demo OTP. Use 123456."
+            )
+
+            return
+
+
+        existing = st.session_state.get(
+            "registration_lookup"
+        )
+
+
+        # ----------------------------------------------------
+        # EXISTING PATIENT
+        # ----------------------------------------------------
+
+        if mode == "existing":
+
+            if not existing:
 
                 st.error(
-                    "Incorrect OTP."
+
+                    """
+No registered NETRA patient was found
+for this demo ID.
+
+Choose New Patient to create a patient record first.
+"""
+
                 )
 
-    with c2:
-
-        if st.button(
-            "← Back",
-            key="otp_back"
-        ):
-
-            st.session_state[
-                "screening_step"
-            ] = "verification"
-
-            st.rerun()
+                return
 
 
-# ============================================================
-# PATIENT DETAILS
-# ============================================================
+            patient = existing
 
-def patient_details_screen():
-
-    patient = st.session_state.get(
-        "generated_patient"
-    )
-
-    if not patient:
-
-        st.session_state[
-            "screening_step"
-        ] = "patient_selection"
-
-        st.rerun()
-
-    st.markdown(
-        "## Patient Verified"
-    )
-
-    st.success(
-        "Identity verification completed in prototype mode."
-    )
-
-    st.markdown(
-        f"""
-        <div class="netra-id-box">
-
-        NETRA PATIENT ID:
-        <span style="font-size:22px;">
-        {patient["netra_id"]}
-        </span>
-
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-    c1, c2 = st.columns(2)
-
-    with c1:
-
-        st.markdown(
-            f"""
-            <div class="info-card">
-
-            <b>Patient Name</b><br>
-            {patient["name"]}<br><br>
-
-            <b>Father's Name</b><br>
-            {patient["father_name"]}<br><br>
-
-            <b>Date of Birth</b><br>
-            {patient["dob"]}
-
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-    with c2:
-
-        st.markdown(
-            f"""
-            <div class="info-card">
-
-            <b>Mobile</b><br>
-            {patient["mobile"]}<br><br>
-
-            <b>Address</b><br>
-            {patient["address"]}<br><br>
-
-            <b>Identity Type</b><br>
-            {patient["id_type"]}
-
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-    st.warning(
-        "These patient details are synthetic prototype data. "
-        "They are not retrieved from a government database."
-    )
-
-    c1, c2 = st.columns(2)
-
-    with c1:
-
-        if st.button(
-            "Begin Retinal Screening →",
-            key="begin_screening"
-        ):
-
-            save_patient(patient)
 
             st.session_state[
                 "patient"
             ] = patient
 
-            st.session_state[
-                "screening_step"
-            ] = "screening"
-
-            st.rerun()
-
-    with c2:
-
-        if st.button(
-            "← Back",
-            key="details_back"
-        ):
 
             st.session_state[
-                "screening_step"
-            ] = "otp"
+                "patient_verified"
+            ] = True
+
+
+            st.session_state[
+                "screening_unlocked"
+            ] = False
+
 
             st.rerun()
 
 
-# ============================================================
-# SCREENING DASHBOARD
-# ============================================================
+        # ----------------------------------------------------
+        # NEW PATIENT
+        # ----------------------------------------------------
 
-def screening_dashboard():
+        st.session_state[
+            "registration_stage"
+        ] = "details"
 
-    history = get_all_history()
 
-    total_screenings = (
-        len(history)
-        if PANDAS_AVAILABLE
-        and isinstance(history, pd.DataFrame)
-        else 0
-    )
+        st.rerun()
 
-    st.markdown(
-        "## NETRA AI Dashboard"
-    )
 
-    st.caption(
-        "AI-assisted retinal screening and longitudinal patient management."
-    )
+    # ========================================================
+    # STOP AFTER OTP
+    # ========================================================
 
-    c1, c2, c3 = st.columns(3)
+    if stage == "otp":
 
-    with c1:
+        return
 
-        st.markdown(
-            """
-            <div class="info-card">
-            <div>Screenings Completed</div>
-            <div class="big-number">
-            """
-            + str(total_screenings)
-            + """
-            </div>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
 
-    with c2:
-
-        conn = get_db()
-
-        patient_count = conn.execute(
-            "SELECT COUNT(*) FROM patients"
-        ).fetchone()[0]
-
-        conn.close()
-
-        st.markdown(
-            f"""
-            <div class="info-card">
-
-            <div>Patients Registered</div>
-
-            <div class="big-number">
-            {patient_count}
-            </div>
-
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-    with c3:
-
-        st.markdown(
-            f"""
-            <div class="info-card">
-
-            <div>System Status</div>
-
-            <div class="big-number">
-            {"READY" if model_status else "MODEL ERROR"}
-            </div>
-
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-    st.divider()
+    # ========================================================
+    # NEW PATIENT DETAILS
+    # ========================================================
 
     st.markdown(
-        "### Start a new screening"
+        "### Confirm Patient Details"
     )
 
-    st.write(
-        "Verify or register the patient before uploading "
-        "a retinal image."
+
+    p = (
+        demo_person
+        or {}
     )
+
+
+    name = st.text_input(
+
+        "Patient name",
+
+        value=p.get(
+            "name",
+            ""
+        ),
+
+        key="reg_name"
+
+    )
+
+
+    father = st.text_input(
+
+        "Father / Guardian name",
+
+        value=p.get(
+            "father_name",
+            ""
+        ),
+
+        key="reg_father"
+
+    )
+
+
+    mobile = st.text_input(
+
+        "Registered mobile",
+
+        value=p.get(
+            "mobile",
+            ""
+        ),
+
+        key="reg_mobile"
+
+    )
+
+
+    dob = st.text_input(
+
+        "Date of birth",
+
+        value=p.get(
+            "dob",
+            ""
+        ),
+
+        key="reg_dob"
+
+    )
+
+
+    address = st.text_area(
+
+        "Address",
+
+        value=p.get(
+            "address",
+            ""
+        ),
+
+        key="reg_address"
+
+    )
+
 
     if st.button(
-        "Start New Screening →",
-        key="start_new_screening"
+        "Create NETRA Patient ID & Continue →",
+        key="create_patient"
     ):
 
-        st.session_state[
-            "screening_step"
-        ] = "patient_selection"
+        if (
+
+            not name.strip()
+
+            or
+
+            not mobile.strip()
+
+            or
+
+            not dob.strip()
+
+        ):
+
+            st.error(
+                "Name, mobile number and date of birth are required."
+            )
+
+            return
+
+
+        netra_id, error = register_patient(
+
+            id_type,
+            id_ref,
+            name,
+            father,
+            mobile,
+            dob,
+            address
+
+        )
+
+
+        if error:
+
+            st.error(
+                error
+            )
+
+            return
+
+
+        patient = {
+
+            "netra_id":
+                netra_id,
+
+            "gov_id_type":
+                id_type,
+
+            "gov_id_ref":
+                id_ref.strip().upper(),
+
+            "name":
+                name,
+
+            "father_name":
+                father,
+
+            "mobile":
+                mobile,
+
+            "dob":
+                dob,
+
+            "address":
+                address,
+
+            "created_at":
+                datetime.now().strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                ),
+
+            "last_screened":
+                None,
+
+            "current_grade":
+                None,
+
+            "followup_due":
+                None
+
+        }
+
 
         st.session_state[
-            "patient_mode"
-        ] = None
+            "patient"
+        ] = patient
+
+
+        st.session_state[
+            "patient_verified"
+        ] = True
+
+
+        st.session_state[
+            "screening_unlocked"
+        ] = False
+
+
+        st.session_state[
+            "registration_stage"
+        ] = "id"
+
+
+        st.success(
+            f"NETRA ID created: {netra_id}"
+        )
+
 
         st.rerun()
 
 
 # ============================================================
-# MAIN SCREENING PIPELINE
+# SCREENING PAGE
 # ============================================================
 
-def screening_pipeline():
+def render_screening():
 
-    step = st.session_state.get(
-        "screening_step",
-        "dashboard"
+    patient = st.session_state.get(
+        "patient"
     )
 
-    # --------------------------------------------------------
-    # DASHBOARD
-    # --------------------------------------------------------
 
-    if step == "dashboard":
-
-        screening_dashboard()
-
-        return
-
-    # --------------------------------------------------------
-    # PATIENT SELECTION
-    # --------------------------------------------------------
-
-    if step == "patient_selection":
+    if not patient:
 
         patient_registration_screen()
 
         return
 
-    # --------------------------------------------------------
-    # VERIFICATION
-    # --------------------------------------------------------
 
-    if step == "verification":
+    st.markdown(
+        "## Retinal Screening"
+    )
 
-        identity_verification_screen()
 
-        return
+    st.caption(
 
-    # --------------------------------------------------------
-    # NEW REGISTRATION / VERIFICATION
-    # --------------------------------------------------------
+        f"""
+Patient:
+**{patient["name"]}**
 
-    if step == "registration":
+•
 
-        identity_verification_screen()
+NETRA ID:
+**{patient["netra_id"]}**
+"""
 
-        return
+    )
 
-    # --------------------------------------------------------
-    # OTP
-    # --------------------------------------------------------
-
-    if step == "otp":
-
-        otp_screen()
-
-        return
 
     # --------------------------------------------------------
-    # PATIENT DETAILS
+    # CHANGE PATIENT
     # --------------------------------------------------------
 
-    if step == "patient_details":
+    if st.button(
+        "← Change Patient",
+        key="change_patient"
+    ):
 
-        patient_details_screen()
+        keys = [
 
-        return
+            "patient",
+            "patient_verified",
+            "screening_unlocked",
+            "patient_mode",
+            "registration_stage"
+
+        ]
+
+
+        for key in keys:
+
+            st.session_state.pop(
+                key,
+                None
+            )
+
+
+        st.rerun()
+
 
     # --------------------------------------------------------
-    # ACTUAL SCREENING
+    # UPLOAD
     # --------------------------------------------------------
 
-    if step == "screening":
+    uploaded_file = st.file_uploader(
 
-        patient = st.session_state.get(
-            "patient"
+        "Upload Retinal Fundus Photograph",
+
+        type=[
+            "png",
+            "jpg",
+            "jpeg"
+        ]
+
+    )
+
+
+    if not uploaded_file:
+
+        st.info(
+            "Upload a retinal fundus image to begin screening."
         )
 
-        if not patient:
+        return
 
-            st.session_state[
-                "screening_step"
-            ] = "patient_selection"
 
-            st.rerun()
+    raw_img = Image.open(
+        uploaded_file
+    ).convert("RGB")
 
-        st.markdown(
-            f"""
-            <div class="patient-header">
 
-            <div style="
-                font-size:13px;
-                font-weight:800;
-                color:#087b78;">
-                PATIENT VERIFIED
-            </div>
+    img_array = np.array(
+        raw_img
+    )
 
-            <h2>
-            {patient["name"]}
-            </h2>
 
-            <div class="netra-id-box">
-            NETRA ID:
-            {patient["netra_id"]}
-            </div>
+    # ========================================================
+    # QUALITY
+    # ========================================================
 
-            </div>
+    st.divider()
+
+    st.subheader(
+        "1. Image Quality Assessment Gate"
+    )
+
+
+    q_metrics = evaluate_image_quality(
+        img_array
+    )
+
+
+    q1, q2, q3, q4 = st.columns(4)
+
+
+    q1.metric(
+        "Focus",
+        q_metrics["focus_score"]
+    )
+
+
+    q2.metric(
+        "Illumination",
+        q_metrics[
+            "illumination_score"
+        ]
+    )
+
+
+    q3.metric(
+        "FOV Coverage",
+        f'{q_metrics["fov_coverage"]}%'
+    )
+
+
+    if q_metrics["status"] == "PASS":
+
+        q4.markdown(
+            """
+            <span class="status-badge status-pass">
+            STATUS: PASS
+            </span>
             """,
             unsafe_allow_html=True
         )
 
-        if st.button(
-            "← Switch Patient",
-            key="switch_patient"
-        ):
 
-            st.session_state[
-                "patient"
-            ] = None
-
-            st.session_state[
-                "screening_step"
-            ] = "patient_selection"
-
-            st.rerun()
-
-        st.markdown(
-            "### Upload Retinal Image"
-        )
-
-        st.caption(
-            "Upload a clear fundus photograph for "
-            "AI-assisted diabetic retinopathy screening."
-        )
-
-        uploaded_file = st.file_uploader(
-            "Browse / Upload Fundus Image",
-            type=[
-                "png",
-                "jpg",
-                "jpeg"
-            ],
-            key="fundus_upload"
-        )
-
-        if not uploaded_file:
-
-            st.info(
-                "Please upload a retinal fundus photograph "
-                "to begin analysis."
-            )
-
-            return
-
-        raw_img = Image.open(
-            uploaded_file
-        ).convert("RGB")
-
-        img_array = np.array(
-            raw_img
-        )
-
-        st.divider()
-
-        # ----------------------------------------------------
-        # QUALITY GATE
-        # ----------------------------------------------------
-
-        st.subheader(
-            "1. Image Quality Assessment Gate"
-        )
-
-        q_metrics = evaluate_image_quality(
+        processed_img = preprocess_standard(
             img_array
         )
 
-        q_col1, q_col2, q_col3, q_col4 = (
-            st.columns(4)
+
+    elif q_metrics["status"] == "BORDERLINE":
+
+        q4.markdown(
+            """
+            <span class="status-badge status-borderline">
+            STATUS: BORDERLINE
+            </span>
+            """,
+            unsafe_allow_html=True
         )
 
-        q_col1.metric(
-            "Focus",
-            f"{q_metrics['focus_score']}"
+
+        processed_img = preprocess_adaptive_denoise(
+            img_array
         )
 
-        q_col2.metric(
-            "Illumination",
-            f"{q_metrics['illumination_score']}"
+
+    else:
+
+        q4.markdown(
+            """
+            <span class="status-badge status-fail">
+            STATUS: RECAPTURE
+            </span>
+            """,
+            unsafe_allow_html=True
         )
 
-        q_col3.metric(
-            "FOV Coverage",
-            f"{q_metrics['fov_coverage']}%"
+
+        st.error(
+            """
+            Automated grading stopped.
+
+            Please recapture a better-quality fundus image.
+            """
         )
 
-        status = q_metrics["status"]
 
-        if status == "PASS":
+        return
 
-            q_col4.markdown(
-                '<span class="status-badge status-pass">'
-                'STATUS: PASS'
-                '</span>',
-                unsafe_allow_html=True
-            )
 
-            processed_img = (
-                preprocess_standard(
-                    img_array,
-                    size=224
-                )
-            )
+    st.info(
+        f'**Gate Decision:** {q_metrics["action"]}'
+    )
 
-        elif status == "BORDERLINE":
 
-            q_col4.markdown(
-                '<span class="status-badge status-borderline">'
-                'STATUS: BORDERLINE'
-                '</span>',
-                unsafe_allow_html=True
-            )
+    # ========================================================
+    # MODEL CHECK
+    # ========================================================
 
-            processed_img = (
-                preprocess_adaptive_denoise(
-                    img_array,
-                    size=224
-                )
-            )
+    if not model_status:
 
-        else:
+        st.error(
+            """
+            Model unavailable.
 
-            q_col4.markdown(
-                '<span class="status-badge status-fail">'
-                'STATUS: RECAPTURE'
-                '</span>',
-                unsafe_allow_html=True
-            )
-
-            processed_img = (
-                preprocess_standard(
-                    img_array,
-                    size=224
-                )
-            )
-
-        st.info(
-            f"**Gate Decision:** "
-            f"{q_metrics['action']}"
+            Check that `netraai_final.keras`
+            exists beside `streamlit_app.py`.
+            """
         )
 
-        if status == "RECAPTURE":
+        return
 
-            st.error(
-                "⛔ Automated grading stopped. "
-                "Please recapture the fundus image."
-            )
 
-            return
+    # ========================================================
+    # AI CLASSIFICATION
+    # ========================================================
 
-        # ----------------------------------------------------
-        # MODEL
-        # ----------------------------------------------------
+    st.divider()
 
-        if not model_status:
+    st.subheader(
+        "2. AI Severity Grading & Grad-CAM XAI"
+    )
 
-            st.error(
-                "Model unavailable. "
-                "Check `netraai_final.keras`."
-            )
 
-            return
-
-        st.divider()
-
-        st.subheader(
-            "2. AI Severity Grading & Grad-CAM XAI"
-        )
+    try:
 
         with st.spinner(
-            "Executing classification & computing Grad-CAM..."
+            "Executing classification and Grad-CAM..."
         ):
 
             input_tensor = np.expand_dims(
+
                 processed_img.astype(
                     "float32"
                 ),
+
                 axis=0
+
             )
+
 
             heatmap, pred_class, confidence = (
                 make_gradcam_heatmap(
@@ -2321,214 +2634,1154 @@ def screening_pipeline():
                 )
             )
 
+
             heatmap_resized = cv2.resize(
+
                 heatmap,
-                (224, 224)
+
+                (
+                    224,
+                    224
+                )
+
             )
 
+
             heatmap_colored = cv2.applyColorMap(
+
                 np.uint8(
                     255 * heatmap_resized
                 ),
+
                 cv2.COLORMAP_JET
+
             )
+
 
             processed_bgr = cv2.cvtColor(
-                processed_img.astype("uint8"),
+
+                processed_img.astype(
+                    "uint8"
+                ),
+
                 cv2.COLOR_RGB2BGR
+
             )
+
 
             overlay_rgb = cv2.cvtColor(
+
                 cv2.addWeighted(
+
                     processed_bgr,
                     0.6,
+
                     heatmap_colored,
                     0.4,
+
                     0
+
                 ),
+
                 cv2.COLOR_BGR2RGB
+
             )
 
-        m_col1, m_col2 = st.columns(2)
 
-        m_col1.metric(
-            "Predicted Severity",
-            f"Grade {pred_class} — "
-            f"{GRADE_LABELS[pred_class]}"
+    except Exception as error:
+
+        st.error(
+            f"Grad-CAM / classification error: {error}"
         )
 
-        m_col2.metric(
-            "Model Confidence",
-            f"{confidence * 100:.1f}%"
-        )
+        return
 
-        v_col1, v_col2, v_col3 = st.columns(3)
 
-        v_col1.image(
-            img_array,
-            caption="Original Fundus",
-            use_container_width=True
-        )
+    # ========================================================
+    # RESULT METRICS
+    # ========================================================
 
-        v_col2.image(
-            cv2.cvtColor(
-                heatmap_colored,
-                cv2.COLOR_BGR2RGB
+    m1, m2, m3 = st.columns(3)
+
+
+    m1.metric(
+        "Predicted Severity",
+        f"Grade {pred_class}"
+    )
+
+
+    m2.metric(
+        "Grade",
+        GRADE_LABELS[pred_class]
+    )
+
+
+    m3.metric(
+        "Model Confidence",
+        f"{confidence * 100:.1f}%"
+    )
+
+
+    # ========================================================
+    # VISUAL XAI
+    # ========================================================
+
+    v1, v2, v3 = st.columns(3)
+
+
+    v1.image(
+        img_array,
+        caption="Original Fundus",
+        use_container_width=True
+    )
+
+
+    v2.image(
+        cv2.cvtColor(
+            heatmap_colored,
+            cv2.COLOR_BGR2RGB
+        ),
+        caption="Grad-CAM Heatmap",
+        use_container_width=True
+    )
+
+
+    v3.image(
+        overlay_rgb,
+        caption="Grad-CAM Overlay",
+        use_container_width=True
+    )
+
+
+    # ========================================================
+    # RETINAL STRUCTURES
+    # ========================================================
+
+    st.divider()
+
+    st.subheader(
+        "3. Retinal Structure Evidence"
+    )
+
+
+    r1, r2 = st.columns(2)
+
+
+    with r1:
+
+        st.image(
+
+            localize_optic_disc_and_fovea(
+                processed_img
             ),
-            caption="Grad-CAM Heatmap",
+
+            caption=(
+                "Optic Disc / Fovea Localization"
+            ),
+
             use_container_width=True
+
         )
 
-        v_col3.image(
-            overlay_rgb,
-            caption="Grad-CAM Overlay",
+
+    with r2:
+
+        st.image(
+
+            extract_vascular_tree(
+                processed_img
+            ),
+
+            caption=(
+                "Retinal Vasculature Mask"
+            ),
+
             use_container_width=True
+
         )
 
-        # ----------------------------------------------------
-        # RETINAL STRUCTURES
-        # ----------------------------------------------------
 
-        st.divider()
+    # ========================================================
+    # EXPLANATION
+    # ========================================================
 
-        st.subheader(
-            "3. Retinal Structure & Anatomical Evidence"
+    exp_text, quads = generate_explanation(
+
+        pred_class,
+
+        heatmap_resized
+
+    )
+
+
+    hot_quadrant = max(
+        quads,
+        key=quads.get
+    )
+
+
+    # ========================================================
+    # SAVE SCREENING
+    # ========================================================
+
+    record_uid = save_screening_to_db(
+
+        patient["netra_id"],
+
+        patient["name"],
+
+        pred_class,
+
+        GRADE_LABELS[
+            pred_class
+        ],
+
+        round(
+            confidence * 100,
+            2
+        ),
+
+        hot_quadrant,
+
+        q_metrics[
+            "focus_score"
+        ],
+
+        q_metrics[
+            "illumination_score"
+        ],
+
+        q_metrics[
+            "fov_coverage"
+        ]
+
+    )
+
+
+    # ========================================================
+    # FOLLOW-UP
+    # ========================================================
+
+    due_days = grade_followup_days(
+        pred_class
+    )
+
+
+    due_date = (
+        date.today()
+        +
+        timedelta(
+            days=due_days
         )
+    )
 
-        r_col1, r_col2 = st.columns(2)
 
-        with r_col1:
+    st.success(
 
-            st.image(
-                localize_optic_disc_and_fovea(
-                    processed_img
-                ),
-                caption=(
-                    "Anatomical Landmarks "
-                    "(Optic Disc: Yellow | Fovea: Blue)"
-                ),
-                use_container_width=True
+        f"""
+Screening saved successfully.
+
+Screening ID:
+`{record_uid}`
+"""
+
+    )
+
+
+    st.info(
+
+        f"""
+Prototype follow-up schedule:
+
+**{due_days} days**
+
+Due date:
+**{due_date.isoformat()}**
+"""
+
+    )
+
+
+    # ========================================================
+    # CLINICAL REPORT
+    # ========================================================
+
+    st.markdown(
+        "### Screening Interpretation"
+    )
+
+
+    formatted_report = (
+        "<br><br>"
+        .join(
+            exp_text.split(
+                "\n"
             )
+        )
+    )
 
-        with r_col2:
 
-            st.image(
-                extract_vascular_tree(
-                    processed_img
-                ),
-                caption="Segmented Retinal Vasculature Mask",
-                use_container_width=True
-            )
+    st.markdown(
 
-        # ----------------------------------------------------
-        # EXPLANATION
-        # ----------------------------------------------------
+        f"""
+        <div style="
+            background:#ffffff;
+            border:1px solid #cbd5e1;
+            border-radius:12px;
+            padding:20px;
+            line-height:1.7;
+        ">
 
-        exp_text, quads = (
-            generate_explanation(
-                pred_class,
-                heatmap_resized
-            )
+        {formatted_report}
+
+        <hr>
+
+        <b>Clinical safety:</b>
+
+        NETRA AI is an AI-assisted screening prototype.
+        The output should be reviewed by a qualified
+        healthcare professional before clinical decisions.
+
+        </div>
+        """,
+
+        unsafe_allow_html=True
+
+    )
+
+
+# ============================================================
+# PATIENT REGISTRY
+# ============================================================
+
+def render_patient_registry():
+
+    st.title(
+        "Patient Registry"
+    )
+
+
+    st.caption(
+        "Search registered NETRA patients."
+    )
+
+
+    search = st.text_input(
+
+        "Search patient",
+
+        placeholder=(
+            "Name / mobile / NETRA ID / government-ID reference"
         )
 
-        hot_quadrant = max(
-            quads,
-            key=quads.get
-        )
+    )
 
-        st.divider()
 
-        st.subheader(
-            "4. Explainable Screening Report"
-        )
+    rows = get_patients(
+        search
+    )
 
-        formatted_report = (
-            exp_text
-            .replace("\n", "<br>")
-        )
 
-        st.markdown(
-            f"""
-            <div style="
-                background:#ffffff;
-                border:1px solid #cbd5e1;
-                border-radius:12px;
-                padding:20px;
-                color:#1e293b;
-                line-height:1.6;">
-
-            {formatted_report}
-
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-        # ----------------------------------------------------
-        # FOLLOW-UP
-        # ----------------------------------------------------
-
-        st.divider()
-
-        st.subheader(
-            "5. Prototype Follow-Up Schedule"
-        )
+    if not rows:
 
         st.info(
-            followup_message(
-                pred_class
-            )
+            "No registered patients found."
         )
 
-        # ----------------------------------------------------
-        # SAVE
-        # ----------------------------------------------------
+        return
 
-        if st.button(
-            "Save Screening Record",
-            key=f"save_{patient['netra_id']}"
-        ):
 
-            record_uid = (
-                save_screening_to_db(
-                    patient["netra_id"],
-                    patient["name"],
-                    pred_class,
-                    GRADE_LABELS[pred_class],
-                    round(
-                        confidence * 100,
-                        2
-                    ),
-                    hot_quadrant,
-                    q_metrics[
-                        "focus_score"
-                    ],
-                    q_metrics[
-                        "illumination_score"
-                    ],
-                    q_metrics[
-                        "fov_coverage"
-                    ]
-                )
-            )
+    columns = [
 
-            st.success(
-                f"Screening record logged: "
-                f"`{record_uid}`"
+        "NETRA ID",
+        "Name",
+        "Mobile",
+        "DOB",
+        "Last Screened",
+        "Current Grade",
+        "Follow-up Due"
+
+    ]
+
+
+    if PANDAS_AVAILABLE:
+
+        dataframe = pd.DataFrame(
+            rows,
+            columns=columns
+        )
+
+
+        st.dataframe(
+
+            dataframe,
+
+            use_container_width=True,
+
+            hide_index=True
+
+        )
+
+
+    else:
+
+        for row in rows:
+
+            st.write(
+                row
             )
 
 
 # ============================================================
-# PAGE 1 — SCREENING PIPELINE
+# FOLLOW-UP WORKLIST
+# ============================================================
+
+def render_followups():
+
+    st.title(
+        "Follow-Up Worklist"
+    )
+
+
+    st.caption(
+        "Patients whose prototype follow-up date has arrived."
+    )
+
+
+    rows = get_due_followups()
+
+
+    if not rows:
+
+        st.success(
+            "No follow-ups are currently due."
+        )
+
+        return
+
+
+    columns = [
+
+        "NETRA ID",
+        "Name",
+        "Mobile",
+        "Address",
+        "Last Screened",
+        "Grade",
+        "Follow-up Due"
+
+    ]
+
+
+    if PANDAS_AVAILABLE:
+
+        dataframe = pd.DataFrame(
+            rows,
+            columns=columns
+        )
+
+
+        st.dataframe(
+
+            dataframe,
+
+            use_container_width=True,
+
+            hide_index=True
+
+        )
+
+
+        st.download_button(
+
+            "Export / Print Worklist as CSV",
+
+            data=dataframe.to_csv(
+                index=False
+            ).encode("utf-8"),
+
+            file_name=(
+                "netra_followup_worklist.csv"
+            ),
+
+            mime="text/csv"
+
+        )
+
+
+    else:
+
+        for row in rows:
+
+            st.write(
+                row
+            )
+
+
+# ============================================================
+# VALIDATION
+# ============================================================
+
+def render_validation():
+
+    st.title(
+        "Quantitative Model Validation Dashboard"
+    )
+
+
+    st.caption(
+        "Project validation utility dashboard."
+    )
+
+
+    if not METRICS_MODULE_AVAILABLE:
+
+        st.warning(
+            "`metrics.py` is not available in this deployment."
+        )
+
+        return
+
+
+    np.random.seed(42)
+
+
+    y_true_demo = np.random.choice(
+
+        [
+            0,
+            1,
+            2,
+            3,
+            4
+        ],
+
+        size=200,
+
+        p=[
+            0.40,
+            0.25,
+            0.20,
+            0.10,
+            0.05
+        ]
+
+    )
+
+
+    y_pred_demo = (
+        y_true_demo.copy()
+    )
+
+
+    noise_idx = np.random.choice(
+
+        200,
+
+        size=18,
+
+        replace=False
+
+    )
+
+
+    y_pred_demo[
+        noise_idx
+    ] = np.random.choice(
+
+        [
+            0,
+            1,
+            2,
+            3,
+            4
+        ],
+
+        size=18
+
+    )
+
+
+    results = calculate_referable_dr_metrics(
+
+        y_true_demo,
+
+        y_pred_demo
+
+    )
+
+
+    c1, c2, c3, c4 = st.columns(4)
+
+
+    c1.metric(
+
+        "Referable Sensitivity",
+
+        f'{results["sensitivity"]:.2f}%'
+
+    )
+
+
+    c2.metric(
+
+        "Referable Specificity",
+
+        f'{results["specificity"]:.2f}%'
+
+    )
+
+
+    c3.metric(
+
+        "Precision",
+
+        f'{results["precision"]:.2f}%'
+
+    )
+
+
+    c4.metric(
+
+        "F1",
+
+        f'{results["f1_score"]:.2f}%'
+
+    )
+
+
+    if MATPLOTLIB_AVAILABLE:
+
+        st.pyplot(
+
+            generate_validation_plots(
+
+                y_true_demo,
+
+                y_pred_demo
+
+            )
+
+        )
+
+
+# ============================================================
+# PS COVERAGE
+# ============================================================
+
+def render_ps_coverage():
+
+    st.title(
+        "Problem Statement Coverage Dashboard"
+    )
+
+
+    ps_data = [
+
+        {
+
+            "Module":
+                "Image Quality Assessment",
+
+            "Status":
+                "IMPLEMENTED",
+
+            "Details":
+                "Focus, illumination and FOV gate"
+
+        },
+
+        {
+
+            "Module":
+                "Adaptive Enhancement",
+
+            "Status":
+                "IMPLEMENTED",
+
+            "Details":
+                "CLAHE + bilateral denoising"
+
+        },
+
+        {
+
+            "Module":
+                "DR Severity Grading",
+
+            "Status":
+                "IMPLEMENTED",
+
+            "Details":
+                "EfficientNetB0 Grade 0–4"
+
+        },
+
+        {
+
+            "Module":
+                "Explainable AI",
+
+            "Status":
+                "IMPLEMENTED",
+
+            "Details":
+                "Grad-CAM visual evidence"
+
+        },
+
+        {
+
+            "Module":
+                "Retinal Structures",
+
+            "Status":
+                "PROTOTYPE",
+
+            "Details":
+                "Optic disc/fovea and vessel mask"
+
+        },
+
+        {
+
+            "Module":
+                "Patient Registry",
+
+            "Status":
+                "IMPLEMENTED",
+
+            "Details":
+                "Persistent local patient records"
+
+        },
+
+        {
+
+            "Module":
+                "Follow-Up Scheduling",
+
+            "Status":
+                "IMPLEMENTED",
+
+            "Details":
+                "Grade-based 90/60/30/15-day schedule"
+
+        },
+
+        {
+
+            "Module":
+                "Simulink Workflow",
+
+            "Status":
+                "ROADMAP / ARTIFACT",
+
+            "Details":
+                "MATLAB/Simulink program-level simulation"
+
+        }
+
+    ]
+
+
+    if PANDAS_AVAILABLE:
+
+        st.dataframe(
+
+            pd.DataFrame(
+                ps_data
+            ),
+
+            use_container_width=True,
+
+            hide_index=True
+
+        )
+
+
+# ============================================================
+# DISTRICT CAPACITY
+# ============================================================
+
+def render_capacity():
+
+    st.title(
+        "District-Level Telemedicine Capacity Simulator"
+    )
+
+
+    annual_target = st.number_input(
+
+        "Annual Target Patients",
+
+        value=100000,
+
+        step=10000
+
+    )
+
+
+    num_centers = st.slider(
+
+        "Primary Screening Centers",
+
+        min_value=1,
+
+        max_value=50,
+
+        value=10
+
+    )
+
+
+    ai_seconds = st.number_input(
+
+        "Average AI processing seconds / image",
+
+        value=0.5,
+
+        min_value=0.1,
+
+        step=0.1
+
+    )
+
+
+    total_hours = (
+        250 * 8
+    )
+
+
+    ai_capacity_annual = int(
+
+        (
+            total_hours
+            *
+            3600
+            /
+            ai_seconds
+        )
+        *
+        num_centers
+
+    )
+
+
+    c1, c2 = st.columns(2)
+
+
+    c1.metric(
+
+        "Target Patients",
+
+        f"{annual_target:,}"
+
+    )
+
+
+    c2.metric(
+
+        "Estimated AI Capacity",
+
+        f"{ai_capacity_annual:,}"
+
+    )
+
+
+    if ai_capacity_annual >= annual_target:
+
+        st.success(
+
+            "Configured AI capacity exceeds "
+            "the annual target under these assumptions."
+
+        )
+
+    else:
+
+        st.warning(
+
+            "Configured capacity is below "
+            "the annual target under these assumptions."
+
+        )
+
+
+# ============================================================
+# SESSION STATE
+# ============================================================
+
+defaults = {
+
+    "authenticated":
+        False,
+
+    "user":
+        "admin",
+
+    "patient_mode":
+        None,
+
+    "patient_verified":
+        False,
+
+    "patient":
+        None,
+
+    "screening_unlocked":
+        False,
+
+    "registration_stage":
+        "id"
+
+}
+
+
+for key, value in defaults.items():
+
+    if key not in st.session_state:
+
+        st.session_state[
+            key
+        ] = value
+
+
+# ============================================================
+# LOGIN
+# ============================================================
+
+if not st.session_state[
+    "authenticated"
+]:
+
+    st.title(
+        "👁️ NETRA AI — Clinical Access Portal"
+    )
+
+
+    st.caption(
+        "Secure authenticated telemedicine screening node"
+    )
+
+
+    c1, c2, c3 = st.columns(
+        [1, 2, 1]
+    )
+
+
+    with c2:
+
+        with st.form(
+            "login_form"
+        ):
+
+            username = st.text_input(
+                "Username",
+                value="admin"
+            )
+
+
+            password = st.text_input(
+
+                "Password",
+
+                type="password",
+
+                value="password123"
+
+            )
+
+
+            submit = st.form_submit_button(
+                "Log In to Screening Node"
+            )
+
+
+            if submit:
+
+                if (
+
+                    username == "admin"
+
+                    and
+
+                    password == "password123"
+
+                ):
+
+                    st.session_state[
+                        "authenticated"
+                    ] = True
+
+
+                    st.session_state[
+                        "user"
+                    ] = username
+
+
+                    st.rerun()
+
+
+                else:
+
+                    st.error(
+                        "Invalid username or password."
+                    )
+
+
+    st.stop()
+
+
+# ============================================================
+# SIDEBAR
+# ============================================================
+
+with st.sidebar:
+
+    st.markdown(
+        "## 👁️ NETRA AI"
+    )
+
+
+    st.caption(
+
+        f"Operator: "
+        f"`{st.session_state.get('user', 'admin')}`"
+
+    )
+
+
+    if st.button(
+        "Log Out",
+        key="logout_btn"
+    ):
+
+        st.session_state[
+            "authenticated"
+        ] = False
+
+        st.rerun()
+
+
+    st.divider()
+
+
+    page = st.radio(
+
+        "Navigate",
+
+        [
+
+            "◉ Screening Pipeline",
+
+            "👤 Patient Registry",
+
+            "⏰ Follow-Up Worklist",
+
+            "📜 Screening History",
+
+            "📊 Validation Metrics",
+
+            "▥ PS Coverage Dashboard",
+
+            "⚡ District Capacity Simulator"
+
+        ],
+
+        index=0
+
+    )
+
+
+    st.divider()
+
+
+    st.write(
+        "**Model:** EfficientNetB0"
+    )
+
+
+    st.write(
+        "**Database:** SQLite (`netra_history.db`)"
+    )
+
+
+    if model_status:
+
+        st.success(
+            "● Keras Model Loaded"
+        )
+
+    else:
+
+        st.error(
+            "● Model Unavailable"
+        )
+
+
+# ============================================================
+# PAGE ROUTING
 # ============================================================
 
 if page == "◉ Screening Pipeline":
 
-    screening_pipeline()
+    # --------------------------------------------------------
+    # No patient yet
+    # --------------------------------------------------------
+
+    if not st.session_state.get(
+        "patient_verified"
+    ):
+
+        # ----------------------------------------------------
+        # Patient mode selected
+        # ----------------------------------------------------
+
+        if st.session_state.get(
+            "patient_mode"
+        ):
+
+            registration_workflow()
+
+        # ----------------------------------------------------
+        # First screen
+        # ----------------------------------------------------
+
+        else:
+
+            patient_registration_screen()
+
+
+    # --------------------------------------------------------
+    # Patient verified
+    # --------------------------------------------------------
+
+    else:
+
+        render_screening()
 
 
 # ============================================================
-# PAGE 2 — SCREENING HISTORY
+# PATIENT REGISTRY
+# ============================================================
+
+elif page == "👤 Patient Registry":
+
+    render_patient_registry()
+
+
+# ============================================================
+# FOLLOW-UP
+# ============================================================
+
+elif page == "⏰ Follow-Up Worklist":
+
+    render_followups()
+
+
+# ============================================================
+# SCREENING HISTORY
 # ============================================================
 
 elif page == "📜 Screening History":
@@ -2537,19 +3790,30 @@ elif page == "📜 Screening History":
         "Patient Screening History Database"
     )
 
+
     st.caption(
-        "Persistent record log generated via SQLite database"
+        "Persistent screening record log"
     )
+
 
     history_df = get_all_history()
 
+
     if (
+
         PANDAS_AVAILABLE
-        and isinstance(
+
+        and
+
+        isinstance(
             history_df,
             pd.DataFrame
         )
-        and not history_df.empty
+
+        and
+
+        not history_df.empty
+
     ):
 
         st.metric(
@@ -2557,323 +3821,64 @@ elif page == "📜 Screening History":
             len(history_df)
         )
 
+
         st.dataframe(
+
             history_df,
-            use_container_width=True
+
+            use_container_width=True,
+
+            hide_index=True
+
         )
 
-        csv_data = (
-            history_df
-            .to_csv(index=False)
-            .encode("utf-8")
-        )
 
         st.download_button(
-            "📥 Export History to CSV",
-            data=csv_data,
-            file_name="netra_screening_history.csv",
+
+            "Export History to CSV",
+
+            data=history_df.to_csv(
+                index=False
+            ).encode("utf-8"),
+
+            file_name=(
+                "netra_screening_history.csv"
+            ),
+
             mime="text/csv"
+
         )
+
 
     else:
 
         st.info(
-            "No screening records found in database yet."
+            "No screening records found."
         )
 
 
 # ============================================================
-# PAGE 3 — VALIDATION METRICS
+# VALIDATION
 # ============================================================
 
 elif page == "📊 Validation Metrics":
 
-    st.title(
-        "Quantitative Model Validation Dashboard"
-    )
-
-    st.caption(
-        "Phase 3 metric evaluation"
-    )
-
-    np.random.seed(42)
-
-    y_true_demo = np.random.choice(
-        [0, 1, 2, 3, 4],
-        size=200,
-        p=[
-            0.4,
-            0.25,
-            0.2,
-            0.1,
-            0.05
-        ]
-    )
-
-    y_pred_demo = (
-        y_true_demo.copy()
-    )
-
-    noise_idx = np.random.choice(
-        200,
-        size=18,
-        replace=False
-    )
-
-    y_pred_demo[
-        noise_idx
-    ] = np.random.choice(
-        [0, 1, 2, 3, 4],
-        size=18
-    )
-
-    if METRICS_MODULE_AVAILABLE:
-
-        m_results = (
-            calculate_referable_dr_metrics(
-                y_true_demo,
-                y_pred_demo
-            )
-        )
-
-        c1, c2, c3, c4 = st.columns(4)
-
-        c1.metric(
-            "Referable Sensitivity",
-            f"{m_results['sensitivity']:.2f}%"
-        )
-
-        c2.metric(
-            "Referable Specificity",
-            f"{m_results['specificity']:.2f}%"
-        )
-
-        c3.metric(
-            "Precision",
-            f"{m_results['precision']:.2f}%"
-        )
-
-        c4.metric(
-            "F1-Score",
-            f"{m_results['f1_score']:.2f}%"
-        )
-
-        st.divider()
-
-        try:
-
-            st.pyplot(
-                generate_validation_plots(
-                    y_true_demo,
-                    y_pred_demo
-                )
-            )
-
-        except Exception as e:
-
-            st.warning(
-                f"Validation plot unavailable: {e}"
-            )
-
-    else:
-
-        st.error(
-            "`metrics.py` module not found."
-        )
+    render_validation()
 
 
 # ============================================================
-# PAGE 4 — PS COVERAGE DASHBOARD
+# PS COVERAGE
 # ============================================================
 
 elif page == "▥ PS Coverage Dashboard":
 
-    st.title(
-        "Problem Statement Requirements & Implementation Matrix"
-    )
-
-    ps_data = [
-
-        {
-            "Module":
-                "Authentication & Patient Registry",
-
-            "Components":
-                "Login, simulated ID, OTP, NETRA ID",
-
-            "Status":
-                "IMPLEMENTED",
-
-            "Details":
-                "Prototype identity layer with persistent patient records"
-        },
-
-        {
-            "Module":
-                "Image Quality Assessment",
-
-            "Components":
-                "Focus, Illumination, FOV",
-
-            "Status":
-                "IMPLEMENTED",
-
-            "Details":
-                "Live quality gate with borderline enhancement"
-        },
-
-        {
-            "Module":
-                "DR Severity Grading",
-
-            "Components":
-                "Grade 0–4 Classification",
-
-            "Status":
-                "IMPLEMENTED",
-
-            "Details":
-                "EfficientNetB0 model"
-        },
-
-        {
-            "Module":
-                "Explainable AI",
-
-            "Components":
-                "Grad-CAM, Quadrant Salience",
-
-            "Status":
-                "IMPLEMENTED",
-
-            "Details":
-                "Visual attention maps and salience analysis"
-        },
-
-        {
-            "Module":
-                "Retinal Structures",
-
-            "Components":
-                "Optic Disc, Fovea, Vasculature",
-
-            "Status":
-                "IMPLEMENTED",
-
-            "Details":
-                "Prototype anatomical and vessel processing"
-        },
-
-        {
-            "Module":
-                "Patient History",
-
-            "Components":
-                "SQLite, NETRA ID",
-
-            "Status":
-                "IMPLEMENTED",
-
-            "Details":
-                "Persistent screening history"
-        },
-
-        {
-            "Module":
-                "Follow-Up",
-
-            "Components":
-                "Grade-based timeline",
-
-            "Status":
-                "IMPLEMENTED",
-
-            "Details":
-                "Prototype follow-up recommendation logic"
-        },
-
-        {
-            "Module":
-                "Simulink Artifact",
-
-            "Components":
-                "MATLAB / Simulink",
-
-            "Status":
-                "IMPLEMENTED",
-
-            "Details":
-                "External MATLAB/Simulink project artifact"
-        }
-    ]
-
-    if PANDAS_AVAILABLE:
-
-        st.dataframe(
-            pd.DataFrame(ps_data),
-            use_container_width=True,
-            hide_index=True
-        )
+    render_ps_coverage()
 
 
 # ============================================================
-# PAGE 5 — DISTRICT CAPACITY SIMULATOR
+# DISTRICT CAPACITY
 # ============================================================
 
 elif page == "⚡ District Capacity Simulator":
 
-    st.title(
-        "District-Level Telemedicine Capacity Simulator"
-    )
-
-    st.caption(
-        "Screening capacity planning calculator"
-    )
-
-    annual_target = st.number_input(
-        "Annual Target Patients",
-        value=100000,
-        step=10000
-    )
-
-    num_centers = st.slider(
-        "Primary Screening Centers",
-        min_value=1,
-        max_value=50,
-        value=10
-    )
-
-    total_hours = (
-        250 * 8
-    )
-
-    ai_capacity_annual = (
-        total_hours
-        * 3600
-        / 0.5
-    ) * num_centers
-
-    st.metric(
-        "AI Pipeline Annual Processing Capacity",
-        f"{int(ai_capacity_annual):,} images"
-    )
-
-    if ai_capacity_annual >= annual_target:
-
-        st.success(
-            "Configured centers have sufficient "
-            "theoretical AI processing capacity "
-            "for the selected annual target."
-        )
-
-    else:
-
-        st.warning(
-            "Additional processing capacity or "
-            "screening centers may be required."
-        )
-
-
-# ============================================================
-# END OF APPLICATION
-# ============================================================
+    render_capacity()
